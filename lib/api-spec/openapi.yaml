@@ -1,22 +1,24 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Virtual World 3D API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: world
+    description: World state operations
+  - name: npcs
+    description: NPC operations
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +26,195 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /world/state:
+    get:
+      operationId: getWorldState
+      tags: [world]
+      summary: Get current world state (NPCs, objects, players)
+      responses:
+        "200":
+          description: World state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorldState"
+
+  /world/objects:
+    get:
+      operationId: getWorldObjects
+      tags: [world]
+      summary: Get all world objects created by NPCs/players
+      responses:
+        "200":
+          description: List of world objects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorldObject"
+
+  /npcs:
+    get:
+      operationId: getNpcs
+      tags: [npcs]
+      summary: Get all NPCs with their current state
+      responses:
+        "200":
+          description: List of NPCs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Npc"
+
+  /npcs/{npcId}/memory:
+    get:
+      operationId: getNpcMemory
+      tags: [npcs]
+      summary: Get saved memories for an NPC from Supabase
+      parameters:
+        - name: npcId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: NPC memory entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NpcMemory"
+
+  /npcs/{npcId}/stats:
+    get:
+      operationId: getNpcStats
+      tags: [npcs]
+      summary: Get stats summary for an NPC
+      parameters:
+        - name: npcId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: NPC stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NpcStats"
+
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
 
+    Position:
+      type: object
+      required: [x, z]
+      properties:
+        x:
+          type: number
+        z:
+          type: number
+
+    Npc:
+      type: object
+      required: [id, name, color, position, emotion, personality, currentAction]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        color:
+          type: string
+        position:
+          $ref: "#/components/schemas/Position"
+        emotion:
+          type: string
+        personality:
+          type: string
+        currentAction:
+          type: string
+        isMoving:
+          type: boolean
+        memoryCount:
+          type: ["integer", "null"]
+
+    WorldObject:
+      type: object
+      required: [id, creator, creatorId, creatorColor, type, description, position, createdAt]
+      properties:
+        id:
+          type: string
+        creator:
+          type: string
+        creatorId:
+          type: string
+        creatorColor:
+          type: string
+        type:
+          type: string
+        description:
+          type: string
+        position:
+          $ref: "#/components/schemas/Position"
+        createdAt:
+          type: number
+
+    WorldState:
+      type: object
+      required: [npcs, worldObjects, totalPlayers, totalConversations]
+      properties:
+        npcs:
+          type: array
+          items:
+            $ref: "#/components/schemas/Npc"
+        worldObjects:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorldObject"
+        totalPlayers:
+          type: integer
+        totalConversations:
+          type: integer
+
+    NpcMemory:
+      type: object
+      required: [id, npcId, role, content, createdAt]
+      properties:
+        id:
+          type: string
+        npcId:
+          type: string
+        role:
+          type: string
+        content:
+          type: string
+        createdAt:
+          type: string
+
+    NpcStats:
+      type: object
+      required: [npcId, name, totalConversations, totalCreations, mostRecentEmotion]
+      properties:
+        npcId:
+          type: string
+        name:
+          type: string
+        totalConversations:
+          type: integer
+        totalCreations:
+          type: integer
+        mostRecentEmotion:
+          type: string
