@@ -5,7 +5,8 @@ import * as THREE from "three";
 type Pos = { x: number; z: number };
 type Outfit = { top: string; bottom: string; hair: string; accessory: string };
 type NpcState = {
-  id: string; name: string; color: string; gender: "female" | "male";
+  id: string; name: string; color: string; gender: "female" | "male"; 
+  longTermSummary: string; // Um resumo de tudo o que ele viveu
   position: Pos; emotion: string; personality: string;
   currentAction?: string; outfit: Outfit;
 };

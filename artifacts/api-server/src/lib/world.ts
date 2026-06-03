@@ -29,6 +29,7 @@ export interface NpcState {
   lastSpoke: number;
   conversationPartner: string | null;
   conversationTurns: number;
+  memory: string [];
   outfit: { top: string; bottom: string; hair: string; accessory: string };
 }
 
@@ -43,13 +44,6 @@ export interface WorldObject {
   createdAt: number;
   color?: string;
   scale?: number;
-}
-
-export interface PlayerState {
-  id: string;
-  name: string;
-  position: Position;
-  gender: "female" | "male";
 }
 
 export const OBJECT_TYPES = [
@@ -90,6 +84,7 @@ const OUTFITS = {
     accessories: ["óculos", "boné", "relógio", "mochila", "headphones"],
   },
 };
+
 function randomOutfit(gender: "female" | "male") {
   const o = OUTFITS[gender];
   const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
@@ -97,24 +92,24 @@ function randomOutfit(gender: "female" | "male") {
 }
 
 export const npcs: Record<string, NpcState> = {
-  "npc-1":  { id: "npc-1",  name: "Alex",   gender: "female", color: "#FF6B6B", position: { x: 20,   z: 15   }, emotion: "feliz 😊",        personality: "Otimista, amigável e aventureira.", conversationHistory: [], isMoving: false, targetPosition: null, currentAction: "explorando",   createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("female") },
-  "npc-2":  { id: "npc-2",  name: "Jordan", gender: "male",   color: "#4ECDC4", position: { x: -25,  z: 18   }, emotion: "pensativo 🤔",    personality: "Inteligente, analítico e misterioso.", conversationHistory: [], isMoving: false, targetPosition: null, currentAction: "meditando",    createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("male") },
-  "npc-3":  { id: "npc-3",  name: "Luna",   gender: "female", color: "#FFE66D", position: { x: 40,   z: -20  }, emotion: "criativo ✨",     personality: "Artística, sonhadora e criativa.", conversationHistory: [], isMoving: false, targetPosition: null, currentAction: "pintando",     createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("female") },
-  "npc-4":  { id: "npc-4",  name: "Marcus", gender: "male",   color: "#A8E6CF", position: { x: -45,  z: -30  }, emotion: "sério 😤",       personality: "Sério, lógico e disciplinado.", conversationHistory: [], isMoving: false, targetPosition: null, currentAction: "construindo",  createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("male") },
-  "npc-5":  { id: "npc-5",  name: "Zara",   gender: "female", color: "#FF8B94", position: { x: 60,   z: 35   }, emotion: "animado 🎉",     personality: "Energética, competitiva e divertida.", conversationHistory: [], isMoving: false, targetPosition: null, currentAction: "correndo",     createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("female") },
-  "npc-6":  { id: "npc-6",  name: "Kai",    gender: "male",   color: "#B8B8FF", position: { x: -55,  z: 40   }, emotion: "calmo 😌",       personality: "Calmo, sábio e contemplativo.", conversationHistory: [], isMoving: false, targetPosition: null, currentAction: "meditando",    createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("male") },
-  "npc-7":  { id: "npc-7",  name: "Ivy",    gender: "female", color: "#FFDAC1", position: { x: 30,   z: -55  }, emotion: "misterioso 🌙",  personality: "Misteriosa, enigmática e perspicaz.", conversationHistory: [], isMoving: false, targetPosition: null, currentAction: "escrevendo",   createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("female") },
-  "npc-8":  { id: "npc-8",  name: "Dante",  gender: "male",   color: "#E2F0CB", position: { x: -35,  z: -60  }, emotion: "apaixonado ❤️",  personality: "Apaixonado, expressivo e artístico.", conversationHistory: [], isMoving: false, targetPosition: null, currentAction: "compondo",     createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("male") },
-  "npc-9":  { id: "npc-9",  name: "Aria",   gender: "female", color: "#FF9FF3", position: { x: 15,   z: -75  }, emotion: "feliz 😊",        personality: "Musical, vibrante e alegre.", conversationHistory: [], isMoving: false, targetPosition: null, currentAction: "cantando",     createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("female") },
-  "npc-10": { id: "npc-10", name: "Leo",    gender: "male",   color: "#FECA57", position: { x: -15,  z: 70   }, emotion: "entusiasmado 🚀", personality: "Líder nato, protetor e corajoso.", conversationHistory: [], isMoving: false, targetPosition: null, currentAction: "patrulhando",  createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("male") },
-  "npc-11": { id: "npc-11", name: "Mya",    gender: "female", color: "#48DBFB", position: { x: 75,   z: 20   }, emotion: "curioso 🧐",     personality: "Curiosa, científica e rápida.", conversationHistory: [], isMoving: false, targetPosition: null, currentAction: "explorando",   createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("female") },
-  "npc-12": { id: "npc-12", name: "Rex",    gender: "male",   color: "#1DD1A1", position: { x: -75,  z: -25  }, emotion: "sério 😤",       personality: "Robusto, prático e direto.", conversationHistory: [], isMoving: false, targetPosition: null, currentAction: "trabalhando",  createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("male") },
-  "npc-13": { id: "npc-13", name: "Zoe",    gender: "female", color: "#FD9644", position: { x: 50,   z: 60   }, emotion: "grato 🙏",       personality: "Amável, prestativa e gentil.", conversationHistory: [], isMoving: false, targetPosition: null, currentAction: "ajudando",     createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("female") },
-  "npc-14": { id: "npc-14", name: "Finn",   gender: "male",   color: "#54A0FF", position: { x: -50,  z: -65  }, emotion: "animado 🎉",     personality: "Brincalhão, veloz e divertido.", conversationHistory: [], isMoving: false, targetPosition: null, currentAction: "jogando",      createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("male") },
-  "npc-15": { id: "npc-15", name: "Lia",    gender: "female", color: "#A29BFE", position: { x: 65,   z: -45  }, emotion: "sonhador 💭",    personality: "Espiritual, profunda e mística.", conversationHistory: [], isMoving: false, targetPosition: null, currentAction: "meditando",    createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("female") },
-  "npc-16": { id: "npc-16", name: "Hugo",   gender: "male",   color: "#EE5253", position: { x: -65,  z: 50   }, emotion: "sério 😤",       personality: "Trabalhador, resiliente e forte.", conversationHistory: [], isMoving: false, targetPosition: null, currentAction: "construindo",  createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("male") },
-  "npc-17": { id: "npc-17", name: "Sola",   gender: "female", color: "#F368E0", position: { x: 10,   z: 10   }, emotion: "feliz 😊",        personality: "Solar, positiva e radiante.", conversationHistory: [], isMoving: false, targetPosition: null, currentAction: "dançando",     createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("female") },
-  "npc-18": { id: "npc-18", name: "Nox",    gender: "male",   color: "#8395a7", position: { x: -10,  z: -10  }, emotion: "misterioso 🌙",  personality: "Noturno, silencioso e observador.", conversationHistory: [], isMoving: false, targetPosition: null, currentAction: "observando",   createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("male") },
+  "npc-1":  { id: "npc-1",  name: "Alex",   gender: "female", color: "#FF6B6B", position: { x: 20,   z: 15   }, emotion: "feliz 😊",        personality: "Otimista, amigável e aventureira.", conversationHistory: [], memory: [], isMoving: false, targetPosition: null, currentAction: "explorando",   createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("female") },
+  "npc-2":  { id: "npc-2",  name: "Jordan", gender: "male",   color: "#4ECDC4", position: { x: -25,  z: 18   }, emotion: "pensativo 🤔",    personality: "Inteligente, analítico e misterioso.", conversationHistory: [], memory: [], isMoving: false, targetPosition: null, currentAction: "meditando",    createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("male") },
+  "npc-3":  { id: "npc-3",  name: "Luna",   gender: "female", color: "#FFE66D", position: { x: 40,   z: -20  }, emotion: "criativo ✨",     personality: "Artística, sonhadora e criativa.", conversationHistory: [],  memory: [], isMoving: false, targetPosition: null, currentAction: "pintando",     createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("female") },
+  "npc-4":  { id: "npc-4",  name: "Marcus", gender: "male",   color: "#A8E6CF", position: { x: -45,  z: -30  }, emotion: "sério 😤",       personality: "Sério, lógico e disciplinado.", conversationHistory: [], memory: [], isMoving: false, targetPosition: null, currentAction: "construindo",  createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("male") },
+  "npc-5":  { id: "npc-5",  name: "Zara",   gender: "female", color: "#FF8B94", position: { x: 60,   z: 35   }, emotion: "animado 🎉",     personality: "Energética, competitiva e divertida.", conversationHistory: [],  memory: [], isMoving: false, targetPosition: null, currentAction: "correndo",     createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("female") },
+  "npc-6":  { id: "npc-6",  name: "Kai",    gender: "male",   color: "#B8B8FF", position: { x: -55,  z: 40   }, emotion: "calmo 😌",       personality: "Calmo, sábio e contemplativo.", conversationHistory: [], memory: [], isMoving: false, targetPosition: null, currentAction: "meditando",    createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("male") },
+  "npc-7":  { id: "npc-7",  name: "Ivy",    gender: "female", color: "#FFDAC1", position: { x: 30,   z: -55  }, emotion: "misterioso 🌙",  personality: "Misteriosa, enigmática e perspicaz.", conversationHistory: [],  memory: [], isMoving: false, targetPosition: null, currentAction: "escrevendo",   createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("female") },
+  "npc-8":  { id: "npc-8",  name: "Dante",  gender: "male",   color: "#E2F0CB", position: { x: -35,  z: -60  }, emotion: "apaixonado ❤️",  personality: "Apaixonado, expressivo e artístico.", conversationHistory: [], memory: [], isMoving: false, targetPosition: null, currentAction: "compondo",     createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("male") },
+  "npc-9":  { id: "npc-9",  name: "Aria",   gender: "female", color: "#FF9FF3", position: { x: 15,   z: -75  }, emotion: "feliz 😊",        personality: "Musical, vibrante e alegre.", conversationHistory: [], memory: [], isMoving: false, targetPosition: null, currentAction: "cantando",     createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("female") },
+  "npc-10": { id: "npc-10", name: "Leo",    gender: "male",   color: "#FECA57", position: { x: -15,  z: 70   }, emotion: "entusiasmado 🚀", personality: "Líder nato, protetor e corajoso.", conversationHistory: [], memory: [], isMoving: false, targetPosition: null, currentAction: "patrulhando",  createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("male") },
+  "npc-11": { id: "npc-11", name: "Mya",    gender: "female", color: "#48DBFB", position: { x: 75,   z: 20   }, emotion: "curioso 🧐",     personality: "Curiosa, científica e rápida.", conversationHistory: [], memory: [], isMoving: false, targetPosition: null, currentAction: "explorando",   createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("female") },
+  "npc-12": { id: "npc-12", name: "Rex",    gender: "male",   color: "#1DD1A1", position: { x: -75,  z: -25  }, emotion: "sério 😤",       personality: "Robusto, prático e direto.", conversationHistory: [], memory: [], isMoving: false, targetPosition: null, currentAction: "trabalhando",  createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("male") },
+  "npc-13": { id: "npc-13", name: "Zoe",    gender: "female", color: "#FD9644", position: { x: 50,   z: 60   }, emotion: "grato 🙏",       personality: "Amável, prestativa e gentil.", conversationHistory: [], memory: [], isMoving: false, targetPosition: null, currentAction: "ajudando",     createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("female") },
+  "npc-14": { id: "npc-14", name: "Finn",   gender: "male",   color: "#54A0FF", position: { x: -50,  z: -65  }, emotion: "animado 🎉",     personality: "Brincalhão, veloz e divertido.", conversationHistory: [],  memory: [], isMoving: false, targetPosition: null, currentAction: "jogando",      createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("male") },
+  "npc-15": { id: "npc-15", name: "Lia",    gender: "female", color: "#A29BFE", position: { x: 65,   z: -45  }, emotion: "sonhador 💭",    personality: "Espiritual, profunda e mística.", conversationHistory: [], memory: [], isMoving: false, targetPosition: null, currentAction: "meditando",    createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("female") },
+  "npc-16": { id: "npc-16", name: "Hugo",   gender: "male",   color: "#EE5253", position: { x: -65,  z: 50   }, emotion: "sério 😤",       personality: "Trabalhador, resiliente e forte.", conversationHistory: [], memory: [], isMoving: false, targetPosition: null, currentAction: "construindo",  createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("male") },
+  "npc-17": { id: "npc-17", name: "Sola",   gender: "female", color: "#F368E0", position: { x: 10,   z: 10   }, emotion: "feliz 😊",        personality: "Solar, positiva e radiante.", conversationHistory: [], memory: [], isMoving: false, targetPosition: null, currentAction: "dançando",     createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("female") },
+  "npc-18": { id: "npc-18", name: "Nox",    gender: "male",   color: "#8395a7", position: { x: -10,  z: -10  }, emotion: "misterioso 🌙",  personality: "Noturno, silencioso e observador.", conversationHistory: [], memory: [], isMoving: false, targetPosition: null, currentAction: "observando",   createdThings: [], relationships: {}, lastSpoke: 0, conversationPartner: null, conversationTurns: 0, outfit: randomOutfit("male") },
 };
 
 export const players: Record<string, PlayerState> = {};
@@ -218,7 +213,7 @@ async function npcTalkToNPC(npc: NpcState, other: NpcState): Promise<void> {
   const delta = Math.random() > 0.2 ? Math.floor(Math.random() * 6) + 1 : -(Math.floor(Math.random() * 6) + 1);
   updateRelationship(npc, other, delta, delta > 0 ? "conversa amigável" : "desentendimento");
 
-  recentConversations.unshift({ fromName: npc.name, fromColor: npc.color, toName: other.name, toColor: other.color, message: msg, response: response ?? "...", ts: Date.now() });
+  recentConversations.unshift({ fromName: npc.name, fromColor: npc.color, toName: other.name, toColor: other.color, message: msg, response: response ?? "...", ts: now });
   if (recentConversations.length > 20) recentConversations.pop();
 
   broadcastAll({
@@ -234,7 +229,6 @@ async function npcTalkToNPC(npc: NpcState, other: NpcState): Promise<void> {
   npc.currentAction = `falando com ${other.name}`;
   other.currentAction = `falando com ${npc.name}`;
 
-  // Save to memory async (don't await)
   saveNpcMemory(npc.id, "user", `${other.name}: ${msg}`).catch(() => {});
   saveNpcMemory(other.id, "assistant", response ?? "...").catch(() => {});
 }
@@ -270,7 +264,11 @@ async function npcThinkAloud(npc: NpcState): Promise<void> {
     [],
     60
   );
-  if (!thought) return;
+
+  if (!thought) {
+    logger.warn(`${npc.name} não conseguiu gerar um pensamento.`);
+    return;
+  }
 
   npc.lastSpoke = Date.now();
   broadcastAll({ type: "npc-thought", npcId: npc.id, npcName: npc.name, npcColor: npc.color, thought, emotion: npc.emotion });
@@ -280,9 +278,9 @@ async function npcCreateObject(npc: NpcState): Promise<void> {
   const now = Date.now();
   const TWO_HOURS = 2 * 60 * 60 * 1000;
   npc.createdThings = npc.createdThings.filter(t => now - t.createdAt < TWO_HOURS);
-  if (npc.createdThings.length >= 4) return; // Don't over-build
+  if (npc.createdThings.length >= 4) return;
 
-  const typeList = OBJECT_TYPES.slice(0, 20).join(", "); // Shorter list for fewer tokens
+  const typeList = OBJECT_TYPES.slice(0, 20).join(", ");
   const response = await askAI(
     `Você é ${npc.name}. ${npc.personality} Crie algo criativo. Tipos: ${typeList}. Responda só em JSON: {"type":"tipo","description":"frase criativa","color":"#hex"}`,
     [],
@@ -292,10 +290,21 @@ async function npcCreateObject(npc: NpcState): Promise<void> {
   let data: { type: string; description: string; color?: string };
   try {
     const cleaned = (response ?? "").replace(/```json|```/g, "").trim();
-    data = JSON.parse(cleaned);
-    if (!OBJECT_TYPES.includes(data.type)) data.type = OBJECT_TYPES[Math.floor(Math.random() * OBJECT_TYPES.length)];
-  } catch {
-    data = { type: OBJECT_TYPES[Math.floor(Math.random() * OBJECT_TYPES.length)], description: response ?? "criou algo especial" };
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    const jsonToParse = jsonMatch ? jsonMatch[0] : cleaned;
+    
+    data = JSON.parse(jsonToParse);
+    
+    if (!data.type || !OBJECT_TYPES.includes(data.type)) {
+      data.type = OBJECT_TYPES[Math.floor(Math.random() * OBJECT_TYPES.length)];
+    }
+    if (!data.description) data.description = "criou algo misterioso";
+  } catch (e) {
+    logger.warn(`${npc.name} falhou ao processar JSON da IA, usando padrão.`);
+    data = { 
+      type: OBJECT_TYPES[Math.floor(Math.random() * OBJECT_TYPES.length)], 
+      description: "criou algo especial e único" 
+    };
   }
 
   if (npc.createdThings.length >= 4) {
@@ -358,7 +367,13 @@ export async function npcDecideAction(npc: NpcState): Promise<void> {
   npcMove(npc);
 }
 
-// ── Player response — skips Supabase load for speed, uses in-memory history only ──
+export interface PlayerState {
+  id: string;
+  name: string;
+  position: Position;
+  gender: "female" | "male";
+}
+
 export async function respondToPlayer(
   npc: NpcState,
   playerMessage: string,
@@ -367,10 +382,9 @@ export async function respondToPlayer(
   const relHint = getRelationshipHint(npc);
   const systemPrompt = `Você é ${npc.name} (${npc.gender === "female" ? "feminina" : "masculino"}). ${npc.personality}
 ${relHint}Emoção: ${npc.emotion}. Você está conversando diretamente com ${playerName}.
-Responda de forma natural, autêntica e em português. Máximo 3 frases.
+Responda de forma natural, autêntica e em português. Use emojis quando apropriado
 Mencione @${playerName} na resposta. Se houver pergunta, responda com sua perspectiva única.`;
 
-  // Use only recent in-memory history (fast, no Supabase roundtrip)
   const history = npc.conversationHistory.slice(-6);
   history.push({ role: "user", content: `${playerName}: ${playerMessage}` });
 
@@ -383,7 +397,6 @@ Mencione @${playerName} na resposta. Se houver pergunta, responda com sua perspe
     npc.emotion = randomEmotion();
     npc.lastSpoke = Date.now();
     totalConversations++;
-    // Save async
     saveNpcMemory(npc.id, "user", playerMessage).catch(() => {});
     saveNpcMemory(npc.id, "assistant", reply).catch(() => {});
   }
@@ -393,7 +406,6 @@ Mencione @${playerName} na resposta. Se houver pergunta, responda com sua perspe
 
 export async function broadcastToAllNpcs(playerMessage: string, playerName: string): Promise<void> {
   const npcList = Object.values(npcs);
-  // Pick 2-3 random NPCs to respond
   const responding = [...npcList].sort(() => Math.random() - 0.5).slice(0, 3);
   for (const npc of responding) {
     const reply = await respondToPlayer(npc, playerMessage, playerName);
@@ -406,7 +418,6 @@ export async function broadcastToAllNpcs(playerMessage: string, playerName: stri
 
 export function getRecentConversations() { return recentConversations.slice(0, 15); }
 
-// Only 1-2 NPCs act per loop cycle to conserve Groq tokens
 export async function aiLoop(): Promise<void> {
   const npcList = Object.values(npcs);
   const count = Math.random() < 0.6 ? 1 : 2;

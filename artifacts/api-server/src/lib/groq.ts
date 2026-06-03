@@ -3,7 +3,7 @@ import { logger } from "./logger";
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-// Separate clients for player (priority) vs background NPC calls
+// Função principal para falar com a IA
 export async function askAI(
   systemPrompt: string,
   messages: Array<{ role: "user" | "assistant"; content: string }>,
