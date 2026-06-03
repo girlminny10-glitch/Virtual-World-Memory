@@ -75,7 +75,11 @@ function buildChar(colorHex: string | number, gender: "female" | "male", isSelf 
   });
 
   // Neck + head
-  g.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(.12,.14,.22,8),skinMat),{position:new THREE.Vector3(0,1.82,0)}));
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.2), new THREE.MeshStandardMaterial({ color: 0xcccccc }));
+neck.position.y = 1.6;
+g.add(neck);
+  
+  
   const head = new THREE.Mesh(new THREE.SphereGeometry(.32,16,16), skinMat); head.position.set(0,2.22,0); head.castShadow=true; g.add(head);
 
   // Eyes
