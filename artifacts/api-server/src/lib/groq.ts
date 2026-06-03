@@ -1,14 +1,13 @@
 import Groq from "groq-sdk";
 import { logger } from "./logger";
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-});
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
+// Separate clients for player (priority) vs background NPC calls
 export async function askAI(
   systemPrompt: string,
   messages: Array<{ role: "user" | "assistant"; content: string }>,
-  maxTokens = 150
+  maxTokens = 120
 ): Promise<string | null> {
   try {
     const response = await groq.chat.completions.create({
@@ -18,8 +17,13 @@ export async function askAI(
       temperature: 0.85,
     });
     return response.choices[0]?.message?.content?.trim() ?? null;
-  } catch (err) {
-    logger.error({ err }, "Groq AI error");
+  } catch (err: unknown) {
+    const e = err as { status?: number };
+    if (e?.status === 429) {
+      logger.warn("Groq rate limit — skipping");
+    } else {
+      logger.error({ err }, "Groq AI error");
+    }
     return null;
   }
 }
