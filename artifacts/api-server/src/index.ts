@@ -26,4 +26,4 @@ server.listen(port, () => {
 
 setInterval(() => {
   aiLoop().catch((err) => logger.error({ err }, "AI loop error"));
-}, 4000);
+}, 18000);

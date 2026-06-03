@@ -1,44 +1,64 @@
-# [Project name]
+# Virtual World 3D
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+An AI-powered 3D social simulation browser game where 18 autonomous NPCs powered by Groq LLaMA roam, build, and converse in a shared city world.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080)
+- `pnpm --filter @workspace/virtual-world run dev` — run the 3D frontend (port 21799)
+- `pnpm --filter @workspace/api-server run build` — build API server bundle
 - `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Required env: `GROQ_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`, `SESSION_SECRET`
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
+- API: Express 5 + WebSocket (`ws`)
+- AI: Groq SDK (`llama-3.1-8b-instant`)
+- DB: Supabase (memory persistence for NPCs)
+- 3D: Three.js (React + Vite frontend)
 - Build: esbuild (CJS bundle)
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/api-server/src/lib/world.ts` — NPC state, AI behavior, relationships, world objects
+- `artifacts/api-server/src/lib/websocket.ts` — WebSocket message handling
+- `artifacts/api-server/src/lib/groq.ts` — Groq AI integration
+- `artifacts/api-server/src/lib/supabase.ts` — NPC memory persistence
+- `artifacts/virtual-world/src/pages/Game.tsx` — Full 3D game UI (Three.js, all HUD)
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- **AI loop runs every 18s** to stay within Groq free-tier TPD limits (500k tokens/day). NPCs pick one action: talk to each other, move, think, or build.
+- **WebGL fallback**: graceful message if WebGL unavailable (Replit preview iframe); works in full browser tab.
+- **WORLD_SIZE=300** with city blocks spread at realistic distances. Player and NPCs constrained within bounds.
+- **NPC relationships** use a -100 to +100 bond score that evolves through conversations, affecting what they say to each other.
+- **Drawing canvas TTL = 30 minutes** — canvas auto-clears after 30 mins, NPC drawings broadcast via WebSocket.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Name entry screen with male/female character selection (default: Minny, female)
+- 18 AI NPCs with distinct personalities, genders, outfits, and relationship webs
+- Real-time 3D world with Three.js: buildings, roads, stars, NPCs walking around
+- Chat (individual NPC or broadcast to all), conversation feed panel showing live NPC dialogues
+- 35 building tools with color picker; objects appear with scale-in animation
+- Drawing canvas mode with pen/circle/rect/eraser, 30-min auto-clear, shared across all players
+- Mobile support: on-screen joystick, pinch-to-zoom camera, touch drag rotation
+- Speech bubbles with emotion emotes above characters; @mention alerts when NPC tags player
+- Minimap (bottom right), toast notifications, UI toggle (U key)
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Player default name: Minny, female character
+- Game UI in Portuguese (Brazilian)
+- NPCs greet player with @name tag when approaching
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Groq TPD limit hits fast if AI loop runs too often — keep interval ≥ 15s
+- WebGL not available in Replit preview iframe; users must open in a real browser tab to play
+- Supabase URL must not have `https://` prefix in the env var — the lib auto-adds it
+- `broadcastToAllNpcs` and `getRecentConversations` must be exported from world.ts for websocket.ts
 
 ## Pointers
 
