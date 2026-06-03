@@ -1,6 +1,6 @@
 # Virtual World 3D
 
-An AI-powered 3D social simulation browser game where 18 autonomous NPCs powered by Groq LLaMA roam, build, and converse in a shared city world.
+An AI-powered 3D social simulation browser game where 5 autonomous NPCs powered by Groq LLaMA roam, build, and converse in a shared city world.
 
 ## Run & Operate
 
@@ -29,7 +29,7 @@ An AI-powered 3D social simulation browser game where 18 autonomous NPCs powered
 
 ## Architecture decisions
 
-- **AI loop runs every 18s** to stay within Groq free-tier TPD limits (500k tokens/day). NPCs pick one action: talk to each other, move, think, or build.
+- **AI loop runs every 5s** to stay within Groq free-tier TPD limits (500k tokens/day). NPCs pick one action: talk to each other, move, think, or build.
 - **WebGL fallback**: graceful message if WebGL unavailable (Replit preview iframe); works in full browser tab.
 - **WORLD_SIZE=300** with city blocks spread at realistic distances. Player and NPCs constrained within bounds.
 - **NPC relationships** use a -100 to +100 bond score that evolves through conversations, affecting what they say to each other.
@@ -38,7 +38,7 @@ An AI-powered 3D social simulation browser game where 18 autonomous NPCs powered
 ## Product
 
 - Name entry screen with male/female character selection (default: Minny, female)
-- 18 AI NPCs with distinct personalities, genders, outfits, and relationship webs
+- 5 AI NPCs with distinct personalities, genders, outfits, and relationship webs
 - Real-time 3D world with Three.js: buildings, roads, stars, NPCs walking around
 - Chat (individual NPC or broadcast to all), conversation feed panel showing live NPC dialogues
 - 35 building tools with color picker; objects appear with scale-in animation
@@ -55,7 +55,7 @@ An AI-powered 3D social simulation browser game where 18 autonomous NPCs powered
 
 ## Gotchas
 
-- Groq TPD limit hits fast if AI loop runs too often — keep interval ≥ 15s
+- Groq TPD limit hits fast if AI loop runs too often — keep interval ≥ 5s
 - WebGL not available in Replit preview iframe; users must open in a real browser tab to play
 - Supabase URL must not have `https://` prefix in the env var — the lib auto-adds it
 - `broadcastToAllNpcs` and `getRecentConversations` must be exported from world.ts for websocket.ts

@@ -21,9 +21,9 @@ createWebSocketServer(server);
 
 server.listen(port, () => {
   logger.info({ port }, "Virtual World 3D server listening");
-  logger.info({ npcs: 18 }, "NPCs com IA Groq ativa");
+  logger.info({ npcs: 5 }, "NPCs com IA Groq ativa");
 });
 
 setInterval(() => {
   aiLoop().catch((err) => logger.error({ err }, "AI loop error"));
-}, 18000);
+}, 3000);
