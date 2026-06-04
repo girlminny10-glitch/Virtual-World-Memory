@@ -98,7 +98,7 @@ function randomOutfit(gender: "female" | "male") {
   return { top: pick(o.tops), bottom: pick(o.bottoms), hair: pick(o.hairs), accessory: pick(o.accessories) };
 }
 
-// ─── 5 NPCs ────────────────────────────────────────────────────────────────────
+// ─── 5 NPCs ──────────────────────────────────────────────────────────────────
 export const npcs: Record<string, NpcState> = {
   "npc-1": {
     id: "npc-1", name: "Alex", gender: "female", color: "#FF6B6B",
@@ -239,7 +239,7 @@ export async function initWorld(): Promise<void> {
   logger.info("Mundo inicializado ✅");
 }
 
-// ─── Periodic save ─────────────────────────────────────────────────────────────
+// ─── Periodic save ────────────────────────────────────────────────────────────
 export async function saveWorldState(): Promise<void> {
   try {
     // Save relationships for all NPCs
@@ -253,7 +253,7 @@ export async function saveWorldState(): Promise<void> {
   }
 }
 
-// ─── Helpers ───────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 function getNearbyNPC(npc: NpcState, radius = 35): NpcState | null {
   let closest: NpcState | null = null, minD = Infinity;
   for (const other of Object.values(npcs)) {
@@ -300,7 +300,7 @@ let broadcastFn: BroadcastFn = () => {};
 export function setBroadcast(fn: BroadcastFn): void { broadcastFn = fn; }
 function broadcastAll(data: unknown): void { broadcastFn(data); }
 
-// ─── NPC Movement ──────────────────────────────────────────────────────────────
+// ─── NPC Movement ────────────────────────────────────────────────────────────
 export function npcMove(npc: NpcState): void {
   const target = randomPos();
   npc.targetPosition = target;
@@ -346,7 +346,10 @@ Responda de forma natural e autêntica em português. NÃO use frases genéricas
 Seja espontâneo, mostre sua personalidade. 1-2 frases, sem prefixos como "${npc.name}:".`;
 
   const msg = await askAI(promptA, [], 90);
-  if (!msg) return;
+  if (!msg) {
+    logger.debug({ npc: npc.name, other: other.name }, "IA não respondeu na conversa NPC-to-NPC");
+    return;
+  }
 
   // Build prompt for NPC B responding
   const promptB = `Você é ${other.name}, um(a) NPC com personalidade única: ${other.personality}
@@ -357,7 +360,10 @@ Responda de forma natural, autêntica, mostrando sua personalidade em português
 NÃO ignore o que foi dito. Continue o fio da conversa. 1-2 frases, sem prefixos.`;
 
   const response = await askAI(promptB, [{ role: "user", content: msg }], 90);
-  if (!response) return;
+  if (!response) {
+    logger.debug({ npc: other.name }, "IA não respondeu na resposta de conversação");
+    return;
+  }
 
   // Determine topic if new conversation
   let topic = pairConv.topic;
@@ -432,7 +438,7 @@ NÃO ignore o que foi dito. Continue o fio da conversa. 1-2 frases, sem prefixos
   }
 }
 
-// ─── Auto-Learning ─────────────────────────────────────────────────────────────
+// ─── Auto-Learning ────────────────────────────────────────────────────────────
 async function npcAutoLearnFromConversation(
   npc: NpcState,
   other: NpcState,
@@ -459,7 +465,7 @@ Responda com UMA frase curta e específica em português. Ex: "Jordan prefere pe
   }
 }
 
-// ─── NPC Greet Player ──────────────────────────────────────────────────────────
+// ─── NPC Greet Player ─────────────────────────────────────────────────────────
 async function npcGreetPlayer(npc: NpcState, player: PlayerState): Promise<void> {
   const now = Date.now();
   if (now - npc.lastSpoke < 8000) return;
@@ -478,7 +484,10 @@ Cumprimente ${player.name} de forma pessoal e natural. Mencione @${player.name}.
     [],
     80
   );
-  if (!message) return;
+  if (!message) {
+    logger.debug({ npc: npc.name, player: player.name }, "IA não respondeu ao saudação");
+    return;
+  }
 
   npc.emotion = "animado 🎉";
   npc.lastSpoke = Date.now();
@@ -491,7 +500,7 @@ Cumprimente ${player.name} de forma pessoal e natural. Mencione @${player.name}.
   npc.currentAction = `cumprimentando ${player.name}`;
 }
 
-// ─── NPC Think Aloud ───────────────────────────────────────────────────────────
+// ─── NPC Think Aloud ──────────────────────────────────────────────────────────
 async function npcThinkAloud(npc: NpcState): Promise<void> {
   const now = Date.now();
   if (now - npc.lastSpoke < 15000) return;
@@ -518,12 +527,15 @@ Uma reflexão genuína, específica à sua vida aqui. Em português, 1 frase.`,
   broadcastAll({ type: "npc-thought", npcId: npc.id, npcName: npc.name, npcColor: npc.color, thought, emotion: npc.emotion });
 }
 
-// ─── NPC Create Object ─────────────────────────────────────────────────────────
+// ─── NPC Create Object ────────────────────────────────────────────────────────
 async function npcCreateObject(npc: NpcState): Promise<void> {
   const now = Date.now();
   const TWO_HOURS = 2 * 60 * 60 * 1000;
   npc.createdThings = npc.createdThings.filter(t => now - t.createdAt < TWO_HOURS);
-  if (npc.createdThings.length >= 4) return;
+  if (npc.createdThings.length >= 4) {
+    logger.debug({ npc: npc.name }, "NPC já criou 4 coisas - limite atingido");
+    return;
+  }
 
   const typeList = OBJECT_TYPES.slice(0, 20).join(", ");
   const learningsCtx = npc.learnings.length > 0 ? `Inspirado por: "${npc.learnings[0]}". ` : "";
@@ -537,9 +549,14 @@ Responda APENAS em JSON válido: {"type":"tipo_exato","description":"descrição
     100
   );
 
+  if (!response) {
+    logger.debug({ npc: npc.name }, "IA não respondeu ao criar objeto");
+    return;
+  }
+
   let data: { type: string; description: string; color?: string };
   try {
-    const cleaned = (response ?? "").replace(/```json|```/g, "").trim();
+    const cleaned = response.replace(/```json|```/g, "").trim();
     const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
     const jsonToParse = jsonMatch ? jsonMatch[0] : cleaned;
     data = JSON.parse(jsonToParse);
@@ -547,7 +564,8 @@ Responda APENAS em JSON válido: {"type":"tipo_exato","description":"descrição
       data.type = OBJECT_TYPES[Math.floor(Math.random() * OBJECT_TYPES.length)];
     }
     if (!data.description) data.description = `${npc.name} criou algo especial`;
-  } catch {
+  } catch (err) {
+    logger.debug({ npc: npc.name, err }, "Erro ao parsear JSON da criação de objeto");
     data = {
       type: OBJECT_TYPES[Math.floor(Math.random() * OBJECT_TYPES.length)],
       description: `${npc.name} criou algo especial e único`,
@@ -589,6 +607,8 @@ Responda APENAS em JSON válido: {"type":"tipo_exato","description":"descrição
   saveWorldObject(obj).catch(() => {});
   saveNpcCreation(npc.id, data.description, data.type).catch(() => {});
   broadcastAll({ type: "npc-created-object", object: obj, npcName: npc.name, npcId: npc.id, npcColor: npc.color, description: data.description, emotion: npc.emotion });
+  
+  logger.info({ npc: npc.name, type: data.type }, "NPC criou objeto no mundo");
 }
 
 async function npcCleanup(npc: NpcState): Promise<void> {
@@ -607,19 +627,37 @@ async function npcCleanup(npc: NpcState): Promise<void> {
 }
 
 export async function npcDecideAction(npc: NpcState): Promise<void> {
-  await npcCleanup(npc);
-  const nearbyNPC = getNearbyNPC(npc);
-  const nearbyPlayer = getNearbyPlayer(npc);
-  const now = Date.now();
+  try {
+    await npcCleanup(npc);
+    const nearbyNPC = getNearbyNPC(npc);
+    const nearbyPlayer = getNearbyPlayer(npc);
+    const now = Date.now();
 
-  if (now - npc.lastSpoke < 4000) { npcMove(npc); return; }
+    if (now - npc.lastSpoke < 4000) { npcMove(npc); return; }
 
-  const roll = Math.random();
-  if (nearbyPlayer && roll < 0.3) { await npcGreetPlayer(npc, nearbyPlayer); return; }
-  if (nearbyNPC && roll < 0.60)   { await npcTalkToNPC(npc, nearbyNPC); return; }
-  if (roll < 0.70)                { await npcCreateObject(npc); return; }
-  if (roll < 0.80)                { await npcThinkAloud(npc); return; }
-  npcMove(npc);
+    const roll = Math.random();
+    // Probabilidades ajustadas para ações
+    if (nearbyPlayer && roll < 0.25) { 
+      await npcGreetPlayer(npc, nearbyPlayer); 
+      return; 
+    }
+    if (nearbyNPC && roll < 0.50)   { 
+      await npcTalkToNPC(npc, nearbyNPC); 
+      return; 
+    }
+    if (roll < 0.65)                { 
+      await npcCreateObject(npc); 
+      return; 
+    }
+    if (roll < 0.75)                { 
+      await npcThinkAloud(npc); 
+      return; 
+    }
+    npcMove(npc);
+  } catch (err) {
+    logger.error({ err, npc: npc.name }, "Erro em npcDecideAction");
+    npcMove(npc);
+  }
 }
 
 export interface PlayerState {
@@ -629,76 +667,85 @@ export interface PlayerState {
   gender: "female" | "male";
 }
 
-// ─── Respond to Player ─────────────────────────────────────────────────────────
+// ─── Respond to Player ────────────────────────────────────────────────────────
 export async function respondToPlayer(
   npc: NpcState,
   playerMessage: string,
   playerName: string
 ): Promise<string | null> {
-  const relHint = Object.values(npcs)
-    .filter(n => n.id !== npc.id && npc.relationships[n.id]?.bond > 30)
-    .map(n => `Você gosta de ${n.name}.`)
-    .join(" ");
+  try {
+    const relHint = Object.values(npcs)
+      .filter(n => n.id !== npc.id && npc.relationships[n.id]?.bond > 30)
+      .map(n => `Você gosta de ${n.name}.`)
+      .join(" ");
 
-  const learningsCtx = buildLearningsContext(npc);
-  const history = npc.conversationHistory.slice(-8);
+    const learningsCtx = buildLearningsContext(npc);
+    const history = npc.conversationHistory.slice(-8);
 
-  const systemPrompt = `Você é ${npc.name} (${npc.gender === "female" ? "feminina" : "masculino"}). ${npc.personality}
+    const systemPrompt = `Você é ${npc.name} (${npc.gender === "female" ? "feminina" : "masculino"}). ${npc.personality}
 ${relHint}${learningsCtx}
 Emoção: ${npc.emotion}. Você está conversando com ${playerName}.
 Responda de forma natural, autêntica e pessoal em português. Use emojis quando fizer sentido.
 Mencione @${playerName}. Mostre sua personalidade única. Não seja genérico.`;
 
-  const messages = [
-    ...history,
-    { role: "user" as const, content: `${playerName}: ${playerMessage}` },
-  ];
+    const messages = [
+      ...history,
+      { role: "user" as const, content: `${playerName}: ${playerMessage}` },
+    ];
 
-  const reply = await askAI(systemPrompt, messages, 150);
+    const reply = await askAI(systemPrompt, messages, 150);
 
-  if (reply) {
-    npc.conversationHistory.push({ role: "user", content: `${playerName}: ${playerMessage}` });
-    npc.conversationHistory.push({ role: "assistant", content: reply });
-    if (npc.conversationHistory.length > 30) npc.conversationHistory.splice(0, 2);
-    npc.emotion = randomEmotion();
-    npc.lastSpoke = Date.now();
-    totalConversations++;
+    if (reply) {
+      npc.conversationHistory.push({ role: "user", content: `${playerName}: ${playerMessage}` });
+      npc.conversationHistory.push({ role: "assistant", content: reply });
+      if (npc.conversationHistory.length > 30) npc.conversationHistory.splice(0, 2);
+      npc.emotion = randomEmotion();
+      npc.lastSpoke = Date.now();
+      totalConversations++;
 
-    saveNpcMemory(npc.id, "user", `${playerName}: ${playerMessage}`).catch(() => {});
-    saveNpcMemory(npc.id, "assistant", reply).catch(() => {});
+      saveNpcMemory(npc.id, "user", `${playerName}: ${playerMessage}`).catch(() => {});
+      saveNpcMemory(npc.id, "assistant", reply).catch(() => {});
 
-    // Auto-learn from player interaction periodically
-    if (npc.conversationHistory.length % 8 === 0) {
-      const recentPlayerConv = npc.conversationHistory.slice(-4).map(h => h.content).join(" | ");
-      askAI(
-        `O que ${npc.name} aprendeu com esta conversa com ${playerName}? Resumo em 1 frase curta em português.`,
-        [{ role: "user", content: recentPlayerConv }],
-        40
-      ).then(async (learning) => {
-        if (learning && learning.length > 10) {
-          const cleaned = learning.replace(/["""*]/g, "").trim();
-          if (!npc.learnings.includes(cleaned)) {
-            npc.learnings.unshift(cleaned);
-            if (npc.learnings.length > 15) npc.learnings.pop();
-            await saveNpcLearning(npc.id, cleaned);
-            logger.info({ npc: npc.name, learning: cleaned }, "NPC aprendeu com jogador 🧠");
+      // Auto-learn from player interaction periodically
+      if (npc.conversationHistory.length % 8 === 0) {
+        const recentPlayerConv = npc.conversationHistory.slice(-4).map(h => h.content).join(" | ");
+        askAI(
+          `O que ${npc.name} aprendeu com esta conversa com ${playerName}? Resumo em 1 frase curta em português.`,
+          [{ role: "user", content: recentPlayerConv }],
+          40
+        ).then(async (learning) => {
+          if (learning && learning.length > 10) {
+            const cleaned = learning.replace(/["""*]/g, "").trim();
+            if (!npc.learnings.includes(cleaned)) {
+              npc.learnings.unshift(cleaned);
+              if (npc.learnings.length > 15) npc.learnings.pop();
+              await saveNpcLearning(npc.id, cleaned);
+              logger.info({ npc: npc.name, learning: cleaned }, "NPC aprendeu com jogador 🧠");
+            }
           }
-        }
-      }).catch(() => {});
+        }).catch(() => {});
+      }
     }
-  }
 
-  return reply;
+    return reply;
+  } catch (err) {
+    logger.error({ err, npc: npc.name }, "Erro em respondToPlayer");
+    return null;
+  }
 }
 
 export async function broadcastToAllNpcs(playerMessage: string, playerName: string): Promise<void> {
   const npcList = Object.values(npcs);
   const responding = [...npcList].sort(() => Math.random() - 0.5).slice(0, 3);
   for (const npc of responding) {
-    const reply = await respondToPlayer(npc, playerMessage, playerName);
-    if (reply) {
-      broadcastAll({ type: "npc-response", npcId: npc.id, npcName: npc.name, npcColor: npc.color, response: reply, emotion: npc.emotion });
-      await new Promise(r => setTimeout(r, 800));
+    try {
+      const reply = await respondToPlayer(npc, playerMessage, playerName);
+      if (reply) {
+        broadcastAll({ type: "npc-response", npcId: npc.id, npcName: npc.name, npcColor: npc.color, response: reply, emotion: npc.emotion });
+        await new Promise(r => setTimeout(r, 800));
+      }
+    } catch (err) {
+      logger.debug({ err, npc: npc.name }, "Erro ao transmitir para NPC");
     }
   }
 }
@@ -710,7 +757,11 @@ export async function aiLoop(): Promise<void> {
   const count = Math.random() < 0.5 ? 1 : 2;
   const active = [...npcList].sort(() => Math.random() - 0.5).slice(0, count);
   for (const npc of active) {
-    await npcDecideAction(npc);
-    await new Promise(r => setTimeout(r, 400));
+    try {
+      await npcDecideAction(npc);
+      await new Promise(r => setTimeout(r, 400));
+    } catch (err) {
+      logger.error({ err, npc: npc.name }, "Erro no AI loop");
+    }
   }
 }
