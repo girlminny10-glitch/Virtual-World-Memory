@@ -23,7 +23,7 @@ export async function askAI(
       },
       body: JSON.stringify({
         // Este ID é mantido pelo OpenRouter e funciona sempre
-        model: "meta-llama/llama-3-8b-instruct:free",
+        model: "google/gemma-4-31b-it:free",
         messages: [
           { role: "system", content: systemPrompt },
           ...messages

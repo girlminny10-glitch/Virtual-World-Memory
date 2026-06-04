@@ -68,15 +68,6 @@ waitForPort = 8080
 [workflows.workflow.tasks.env]
 PORT = "8080"
 
-[[workflows.workflow]]
-name = "Start artifact/virtual-word: API Server"
-mode = "sequential"
-author = 60274338
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npm run dev"
-
 [agent]
 stack = "PNPM_WORKSPACE"
 expertMode = true
