@@ -1,43 +1,55 @@
 import { logger } from "./logger";
 
-let apiKey = process.env.GROQ_API_KEY?.trim();
+const apiKey = process.env.GEMINI_API_KEY?.trim() || process.env.GROQ_API_KEY?.trim();
+const model = process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash";
 
 export async function askAI(
   systemPrompt: string,
   messages: Array<{ role: "user" | "assistant"; content: string }>,
   maxTokens = 120
 ): Promise<string | null> {
-  
   if (!apiKey) {
-    logger.warn("GROQ_API_KEY (Gemini) não configurada – respostas de IA desativadas");
+    logger.warn("GEMINI_API_KEY não configurada – respostas de IA desativadas");
     return null;
   }
 
-  const formattedMessages: any[] = [];
-  
-  if (systemPrompt) {
-    formattedMessages.push({ role: "system", content: systemPrompt });
-  }
+  const contents = messages
+    .filter(msg => msg.content && msg.content.trim().length > 0)
+    .map(msg => ({
+      role: msg.role === "assistant" ? "model" : "user",
+      parts: [{ text: msg.content.trim() }]
+    }));
 
-  if (messages && messages.length > 0) {
-    formattedMessages.push(...messages);
-  } else {
-    formattedMessages.push({ role: "user", content: "Inicie o comportamento do NPC com base nas suas diretrizes." });
+  if (contents.length === 0) {
+    contents.push({
+      role: "user",
+      parts: [{ text: "Inicie o comportamento do NPC com base nas suas diretrizes." }]
+    });
   }
 
   try {
-    // URL CORRETA E OFICIAL DE COMPATIBILIDADE OPENAI NO GOOGLE AI STUDIO
-    const response = await fetch("https://generativelanguage.googleapis.com/v1/chat/completions", {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+    const body: any = {
+      contents,
+      generationConfig: {
+        maxOutputTokens: Math.min(maxTokens, 300),
+        temperature: 0.7
+      }
+    };
+
+    if (systemPrompt && systemPrompt.trim().length > 0) {
+      body.systemInstruction = {
+        parts: [{ text: systemPrompt.trim() }]
+      };
+    }
+
+    const response = await fetch(url, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        model: "gemini-1.5-flash",
-        messages: formattedMessages,
-        max_tokens: Math.min(maxTokens, 300)
-      })
+      body: JSON.stringify(body)
     });
 
     if (!response.ok) {
@@ -47,10 +59,11 @@ export async function askAI(
     }
 
     const data = await response.json() as any;
-    return data.choices[0]?.message?.content || null;
+    const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
+    return aiResponse?.trim() || null;
   } catch (error) {
-    logger.error(`Erro ao consultar a IA (Gemini): ${error}`);
+    logger.error(`Erro ao consultar a IA Gemini: ${error instanceof Error ? error.message : String(error)}`);
     return null;
   }
 }
