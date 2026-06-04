@@ -533,7 +533,7 @@ async function npcCreateObject(npc: NpcState): Promise<void> {
   const TWO_HOURS = 2 * 60 * 60 * 1000;
   npc.createdThings = npc.createdThings.filter(t => now - t.createdAt < TWO_HOURS);
   if (npc.createdThings.length >= 4) {
-    logger.debug({ npc: npc.name }, "NPC já criou 4 coisas - limite atingido");
+    logger.debug({ npc: npc.name }, "NPC já criou 8 coisas - limite atingido");
     return;
   }
 
@@ -759,9 +759,11 @@ export async function aiLoop(): Promise<void> {
   for (const npc of active) {
     try {
       await npcDecideAction(npc);
-      await new Promise(r => setTimeout(r, 400));
+      // Espera 30 segundos entre a ação de um NPC e outro para economizar a API
+      await new Promise(r => setTimeout(r, 10000)); 
     } catch (err) {
       logger.error({ err, npc: npc.name }, "Erro no AI loop");
     }
   }
 }
+
