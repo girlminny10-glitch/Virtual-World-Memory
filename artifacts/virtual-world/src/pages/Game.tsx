@@ -211,7 +211,7 @@ function NameEntry({ onStart }: { onStart: (n: string, g: "female"|"male") => vo
       <div style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:20,padding:"2.5rem 2.8rem",width:340,textAlign:"center",boxShadow:"0 16px 64px rgba(0,0,0,0.7)"}}>
         <div style={{fontSize:52,marginBottom:8}}>🌍</div>
         <h1 style={{color:"#88aaff",fontSize:22,fontWeight:700,margin:"0 0 6px"}}>Virtual World 3D</h1>
-        <p style={{color:"#445",fontSize:12,margin:"0 0 26px"}}>18 IAs com personalidade própria te esperam</p>
+        <p style={{color:"#445",fontSize:12,margin:"0 0 26px"}}>5 IAs com memória e personalidade própria te esperam</p>
         <input value={name} onChange={e=>setName(e.target.value)}
           onKeyDown={e=>e.key==="Enter"&&name.trim()&&onStart(name.trim(),gender)}
           style={{width:"100%",boxSizing:"border-box",padding:"10px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.07)",color:"#fff",fontSize:15,outline:"none",marginBottom:14}}
@@ -504,8 +504,18 @@ export default function Game() {
           const ctx=cv.getContext("2d"); if(!ctx) break;
           applyDraw(ctx,d.drawing as DrawCmd); break;
         }
+        case "npc-learned": {
+          toast(`🧠 ${d.npcName} aprendeu: "${(d.learning as string).slice(0,45)}..."`, d.npcColor as string);
+          setNpcList(p=>p.map(n=>n.id===d.npcId?{...n}:n));
+          break;
+        }
       }
     };
+
+    // Keep-alive ping every 5 seconds to prevent server hibernation
+    const pingInterval = setInterval(() => {
+      fetch("/api/healthz").catch(() => {});
+    }, 5000);
 
     // Input
     const onKey = (e:KeyboardEvent,down:boolean) => {
@@ -632,6 +642,7 @@ export default function Game() {
       window.removeEventListener("wheel",onWheel); window.removeEventListener("resize",onResize);
       renderer.domElement.removeEventListener("touchstart",onTS); renderer.domElement.removeEventListener("touchmove",onTM); renderer.domElement.removeEventListener("touchend",onTE);
       cancelAnimationFrame(animId); renderer.dispose(); ws.close();
+      clearInterval(pingInterval);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[started, pName, pGender]);
