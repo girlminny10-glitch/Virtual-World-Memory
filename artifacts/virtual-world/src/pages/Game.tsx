@@ -15,7 +15,7 @@ type Msg = { id: string; who: string; text: string; color: string; mine?: boolea
 type ConvFeed = { fromName: string; fromColor: string; toName: string; toColor: string; message: string; response: string; ts: number };
 type DrawCmd = { type: "line" | "circle" | "rect" | "clear"; x?: number; y?: number; x2?: number; y2?: number; color?: string; size?: number };
 
-const WS_URL = window.location.origin.replace(/^http/, "ws") + "/ws";
+const WS_URL = window.location.origin.replace(/^http/, "ws") + "/api/ws";
 const WORLD_SIZE = 300;
 const DRAW_TTL = 30 * 60 * 1000;
 
