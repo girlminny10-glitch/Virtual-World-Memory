@@ -221,6 +221,20 @@ export async function initWorld(): Promise<void> {
       if (num >= worldObjectIdCounter) worldObjectIdCounter = num + 1;
     }
     logger.info({ count: savedObjects.length }, "Objetos do mundo carregados");
+
+    // Restore each NPC's createdThings from the loaded world objects
+    // so they know what they've already built (avoids re-creating and respects limits)
+    for (const obj of savedObjects) {
+      const npc = Object.values(npcs).find(n => n.id === obj.creatorId);
+      if (npc) {
+        npc.createdThings.push({
+          id: obj.id,
+          type: obj.type,
+          description: obj.description,
+          createdAt: obj.createdAt,
+        });
+      }
+    }
   } catch (err) {
     logger.warn({ err }, "Falha ao carregar objetos do mundo");
   }
@@ -236,7 +250,7 @@ export async function initWorld(): Promise<void> {
         npc.conversationHistory = memories;
         npc.learnings = learnings;
         if (Object.keys(relationships).length > 0) npc.relationships = relationships;
-        logger.info({ npc: npc.name, memories: memories.length, learnings: learnings.length }, "NPC carregado");
+        logger.info({ npc: npc.name, memories: memories.length, learnings: learnings.length, objects: npc.createdThings.length }, "NPC carregado");
       } catch (err) {
         logger.warn({ err, npc: npc.name }, "Falha ao carregar dados do NPC");
       }
@@ -554,7 +568,7 @@ function getOfflineCreation(npc: NpcState): { desc: string; color: string } {
 
 async function npcCreateObject(npc: NpcState): Promise<void> {
   const now = Date.now();
-  if (npc.createdThings.length >= 15) return;
+  if (npc.createdThings.length >= 50) return; // generous limit; objects are permanent
 
   const existingCreations = npc.createdThings.map(t => t.description).join("; ");
   const worldCtx = buildWorldContext();
@@ -619,10 +633,10 @@ A cor deve refletir o humor ou a essência da criação. Seja poético, autênti
     scale: 0.7 + Math.random() * 0.8,
   };
   worldObjects.push(obj);
-  if (worldObjects.length > 250) worldObjects.shift();
   npc.createdThings.push({ id: obj.id, type: obj.type, description: obj.description, createdAt: now });
   npc.currentAction = `criou: ${obj.description.slice(0, 40)}`;
-  saveWorldObject(obj).catch(() => {});
+  // Persist immediately so the object survives server restarts
+  await saveWorldObject(obj).catch((err) => logger.warn({ err }, "Falha ao salvar objeto do NPC"));
   saveNpcCreation(npc.id, obj.description, obj.type).catch(() => {});
   broadcastAll({ type: "npc-created-object", object: obj, npcName: npc.name, npcId: npc.id, npcColor: npc.color, description: obj.description, emotion: npc.emotion });
   pushToFeed({
@@ -667,21 +681,9 @@ Reaja de forma autêntica mostrando sua personalidade. O que você pensa sobre i
   }
 }
 
-async function npcCleanup(npc: NpcState): Promise<void> {
-  const now = Date.now();
-  const THREE_HOURS = 3 * 60 * 60 * 1000;
-  npc.createdThings = npc.createdThings.filter(t => {
-    if (now - t.createdAt > THREE_HOURS) {
-      const idx = worldObjects.findIndex(o => o.id === t.id);
-      if (idx >= 0) {
-        const removed = worldObjects.splice(idx, 1)[0];
-        broadcastAll({ type: "world-object-removed", objectId: removed.id });
-        deleteWorldObject(removed.id).catch(() => {});
-      }
-      return false;
-    }
-    return true;
-  });
+async function npcCleanup(_npc: NpcState): Promise<void> {
+  // Objects are permanent — never deleted automatically.
+  // Players or the admin can remove them manually if needed.
 }
 
 export async function npcDecideAction(npc: NpcState): Promise<void> {

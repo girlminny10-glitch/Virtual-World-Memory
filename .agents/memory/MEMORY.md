@@ -2,3 +2,4 @@
 - [NPC movement lerp](npc-movement.md) — npc-arrived must NOT teleport (causes disappear bug); only update targetPos so lerp completes; lerp speed 10 units/sec matches server timer.
 - [saveNpcPairConversation params](supabase-pair-conv.md) — function signature is (pairKey, history, topic); previously called with (pairKey, topic, history) — swapped bug.
 - [Supabase WebSocket transport](supabase-ws.md) — pass `WebSocket as any` to avoid TS2322 type error with ws@8 and @supabase/supabase-js realtime transport.
+- [World object persistence rules](world-object-persistence.md) — NPC and player objects must be saved to DB immediately; npc.createdThings must be restored from DB on initWorld; no auto-cleanup; Railway healthcheck is /api/healthz.

@@ -5,6 +5,7 @@ import {
   npcs, players, worldObjects, respondToPlayer, broadcastToAllNpcs,
   setBroadcast, npcMove, getRecentConversations, currentWorldEvent,
 } from "./world";
+import { saveWorldObject } from "./supabase";
 
 let _wss: WebSocketServer | null = null;
 
@@ -110,7 +111,8 @@ export function createWebSocketServer(server: import("http").Server): WebSocketS
           scale: Number(data.scale ?? 1),
         };
         worldObjects.push(obj);
-        if (worldObjects.length > 250) worldObjects.shift();
+        // Persist player-created objects so they survive server restarts
+        saveWorldObject(obj).catch((err) => logger.warn({ err }, "Falha ao salvar objeto do jogador"));
         broadcast({ type: "npc-created-object", object: obj, npcName: obj.creator, npcId: playerId, npcColor: playerColor, description: obj.description, emotion: "feliz 😊" });
       }
 
