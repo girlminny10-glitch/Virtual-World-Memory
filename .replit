@@ -1,4 +1,4 @@
-modules = ["nodejs-20", "web", "bash", "postgresql-16"]
+modules = ["nodejs-20", "web", "bash"]
 
 [deployment]
 router = "application"
@@ -11,64 +11,44 @@ args = ["pnpm", "store", "prune"]
 env = { "CI" = "true" }
 
 [workflows]
+runButton = "Project"
 
 [[workflows.workflow]]
-name = "artifacts/virtual-world: web"
+name = "Project"
+mode = "parallel"
 author = "agent"
-mode = "sequential"
 
-[workflows.workflow.metadata]
-outputType = "webview"
-artifactId = "artifacts/virtual-world"
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "API Server"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "pnpm --filter @workspace/virtual-world run dev"
-cwd = "./artifacts/virtual-world"
-waitForPort = 21799
-router = "path"
-
-[workflows.workflow.tasks.env]
-PORT = "21799"
-BASE_PATH = "/"
-
-[[workflows.workflow]]
-name = "artifacts/mockup-sandbox: Component Preview Server"
-author = "agent"
-mode = "sequential"
+waitForPort = 5000
 
 [workflows.workflow.metadata]
 outputType = "webview"
-artifactId = "XegfDyZt7HqfW2Bb8Ghoy"
-isCanvasWorkflow = true
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/mockup-sandbox run dev"
-cwd = "./artifacts/mockup-sandbox"
-waitForPort = 8081
-
-[workflows.workflow.tasks.env]
-PORT = "8081"
-BASE_PATH = "/__mockup"
 
 [[workflows.workflow]]
-name = "artifacts/api-server: API Server"
+name = "API Server"
 author = "agent"
-mode = "sequential"
-
-[workflows.workflow.metadata]
-outputType = "webview"
-artifactId = "3B4_FFSkEVBkAeYMFRJ2e"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "pnpm --filter @workspace/api-server run dev"
-cwd = "./artifacts/api-server"
+args = "PORT=8080 pnpm --filter @workspace/api-server run dev"
 waitForPort = 8080
 
-[workflows.workflow.tasks.env]
-PORT = "8080"
+[workflows.workflow.metadata]
+outputType = "console"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -88,10 +68,6 @@ localPort = 8080
 externalPort = 8080
 
 [[ports]]
-localPort = 8081
-externalPort = 80
-
-[[ports]]
 localPort = 8082
 externalPort = 3002
 
@@ -103,6 +79,15 @@ externalPort = 3001
 localPort = 21799
 externalPort = 3000
 
+[[ports]]
+localPort = 5000
+externalPort = 80
+
 [nix]
 packages = ["psmisc"]
 channel = "stable-25_05"
+
+[userenv]
+
+[userenv.shared]
+PORT = "8080"
