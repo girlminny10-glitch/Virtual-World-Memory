@@ -268,12 +268,27 @@ function applyDraw(ctx: CanvasRenderingContext2D, cmd: DrawCmd) {
 function NameEntry({ onStart }: { onStart: (n: string, g: "female"|"male") => void }) {
   const [name, setName] = useState("Minny");
   const [gender, setGender] = useState<"female"|"male">("female");
+  const isIframe = window.self !== window.top;
   return (
     <div style={{position:"fixed",inset:0,background:"linear-gradient(135deg,#0a0a1e,#151535)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui,sans-serif"}}>
       <div style={{background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:20,padding:"2.5rem 2.8rem",width:340,textAlign:"center",boxShadow:"0 16px 64px rgba(0,0,0,0.7)"}}>
         <div style={{fontSize:52,marginBottom:8}}>🌍</div>
         <h1 style={{color:"#88aaff",fontSize:22,fontWeight:700,margin:"0 0 6px"}}>Virtual World 3D</h1>
-        <p style={{color:"#556",fontSize:12,margin:"0 0 26px"}}>5 IAs com memória e personalidade própria te esperam</p>
+        <p style={{color:"#556",fontSize:12,margin:"0 0 18px"}}>5 IAs com memória e personalidade própria te esperam</p>
+
+        {isIframe && (
+          <div style={{marginBottom:18,padding:"12px 14px",borderRadius:12,background:"rgba(255,180,0,0.1)",border:"1px solid rgba(255,180,0,0.3)"}}>
+            <div style={{fontSize:13,color:"#ffcc44",fontWeight:600,marginBottom:6}}>⚠️ Visualização limitada</div>
+            <div style={{fontSize:12,color:"#aa8830",marginBottom:10,lineHeight:1.5}}>
+              O jogo 3D precisa ser aberto em uma aba completa do navegador para funcionar.
+            </div>
+            <button onClick={()=>window.open(window.location.href,"_blank")}
+              style={{width:"100%",padding:"10px 0",borderRadius:10,border:"none",background:"linear-gradient(90deg,#cc8800,#ffaa00)",color:"#000",cursor:"pointer",fontSize:14,fontWeight:700}}>
+              🚀 Abrir em Nova Aba
+            </button>
+          </div>
+        )}
+
         <input value={name} onChange={e=>setName(e.target.value)}
           onKeyDown={e=>e.key==="Enter"&&name.trim()&&onStart(name.trim(),gender)}
           style={{width:"100%",boxSizing:"border-box",padding:"10px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.07)",color:"#fff",fontSize:15,outline:"none",marginBottom:14}}
