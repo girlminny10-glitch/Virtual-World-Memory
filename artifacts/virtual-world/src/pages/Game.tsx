@@ -428,10 +428,22 @@ export default function Game() {
           if (npcsR.current[n.id]) return;
           const g=buildChar(n.color,n.gender??"female");
           g.position.set(n.position.x,0,n.position.z); scene.add(g);
-          npcsR.current[n.id]={group:g,state:n};
+          npcsR.current[n.id]={group:g,state:{...n,targetPos:undefined}};
         });
         (d.worldObjects as WorldObject[]).forEach(o=>spawnObj(o,scene,objsR.current));
         if(d.recentConversations) setFeed(d.recentConversations as ConvFeed[]);
+        // Apply current server weather immediately on connect
+        if(d.currentWeather) {
+          const ev = d.currentWeather as string;
+          if(ev.includes("chuva")||ev.includes("tempestade")){
+            const wt = ev.includes("tempestade")?"storm":"rain" as WeatherType;
+            setWeather(wt); weatherRef.current=wt;
+          } else if(ev.includes("noite")){setWeather("night");weatherRef.current="night";}
+          else if(ev.includes("festa")){setWeather("party");weatherRef.current="party";}
+          else if(ev.includes("amanhecer")){setWeather("dawn");weatherRef.current="dawn";}
+          else if(ev.includes("neblina")){setWeather("foggy");weatherRef.current="foggy";}
+          else {setWeather("sunny");weatherRef.current="sunny";}
+        }
         break;
       }
       case "npc-move": {

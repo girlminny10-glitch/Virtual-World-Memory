@@ -2,28 +2,29 @@ import { logger } from "./logger";
 
 const apiKey = process.env.GEMINI_API_KEY?.trim() || process.env.GROQ_API_KEY?.trim();
 
-// Try smaller model first (higher quota), fall back to flash
+// Gemini models to try in order — only 2.0 models work with this key
 const MODELS = [
-  process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash-lite",
-  "gemini-1.5-flash-8b",
-  "gemini-2.0-flash",
+  process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash",
+  "gemini-2.0-flash-lite",
+  "gemini-2.0-flash-exp",
 ];
 
 // ─── Circuit breaker ───────────────────────────────────────────────────────────
 // When quota is hit (429), stop all AI calls for CIRCUIT_COOLDOWN ms.
-const CIRCUIT_COOLDOWN = 90_000; // 90 seconds
+const CIRCUIT_COOLDOWN = 120_000; // 2 minutes
 let circuitOpen = false;
 let circuitOpenAt = 0;
 let consecutiveFailures = 0;
 let currentModelIdx = 0;
 
 function openCircuit() {
+  if (circuitOpen) return; // already open
   circuitOpen = true;
   circuitOpenAt = Date.now();
-  logger.warn(`[Circuit breaker] IA pausada por ${CIRCUIT_COOLDOWN/1000}s devido a erros de quota.`);
+  logger.warn(`[Circuit breaker] IA pausada por ${CIRCUIT_COOLDOWN / 1000}s — quota esgotada.`);
 }
 
-function isCircuitOpen(): boolean {
+export function isCircuitOpen(): boolean {
   if (!circuitOpen) return false;
   if (Date.now() - circuitOpenAt > CIRCUIT_COOLDOWN) {
     circuitOpen = false;
@@ -34,18 +35,22 @@ function isCircuitOpen(): boolean {
   return true;
 }
 
-// ─── Fallback responses when AI is unavailable ────────────────────────────────
-const FALLBACK_RESPONSES = [
-  "Hmm, estou pensando... 🤔",
-  "Que mundo interessante este! ✨",
-  "Vou explorar mais por aqui! 🌍",
-  "Preciso de um momento para refletir... 💭",
-  "Que bom te ver por aqui! 😊",
-  "Interessante... muito interessante! 🧐",
+// ─── Predefined NPC actions for when AI is unavailable ─────────────────────────
+const FALLBACK_PHRASES = [
+  "Que lugar incrível! ✨",
+  "Preciso explorar mais por aqui! 🌍",
+  "Hmm, algo interessante por aí... 🤔",
+  "Que bom ter você por perto! 😊",
+  "Estou observando o mundo ao redor... 💭",
+  "Este mundo muda a cada dia! 🌟",
+  "Vou ver o que tem além daquelas construções! 🏙️",
+  "Incrível como este lugar cresce! 🌱",
+  "Sinto que algo especial vai acontecer... 🔮",
+  "Adoro este lugar! ❤️",
 ];
 
-function getFallback(): string {
-  return FALLBACK_RESPONSES[Math.floor(Math.random() * FALLBACK_RESPONSES.length)];
+export function getFallbackPhrase(): string {
+  return FALLBACK_PHRASES[Math.floor(Math.random() * FALLBACK_PHRASES.length)];
 }
 
 export async function askAI(
@@ -54,13 +59,12 @@ export async function askAI(
   maxTokens = 120
 ): Promise<string | null> {
   if (!apiKey) {
-    logger.warn("GEMINI_API_KEY não configurada – usando resposta de fallback");
-    return getFallback();
+    logger.warn("GEMINI_API_KEY não configurada");
+    return null;
   }
 
   // Circuit breaker check
   if (isCircuitOpen()) {
-    logger.debug("[Circuit breaker] Chamada bloqueada — quota em espera.");
     return null;
   }
 
@@ -68,14 +72,11 @@ export async function askAI(
     .filter(msg => msg.content && msg.content.trim().length > 0)
     .map(msg => ({
       role: msg.role === "assistant" ? "model" : "user",
-      parts: [{ text: msg.content.trim() }]
+      parts: [{ text: msg.content.trim() }],
     }));
 
   if (contents.length === 0) {
-    contents.push({
-      role: "user",
-      parts: [{ text: "Inicie o comportamento do NPC." }]
-    });
+    contents.push({ role: "user", parts: [{ text: "Inicie o comportamento do NPC." }] });
   }
 
   const body = {
@@ -84,12 +85,12 @@ export async function askAI(
       maxOutputTokens: Math.min(maxTokens, 256),
       temperature: 0.75,
     },
-    ...(systemPrompt?.trim() ? {
-      systemInstruction: { parts: [{ text: systemPrompt.trim() }] }
-    } : {}),
+    ...(systemPrompt?.trim()
+      ? { systemInstruction: { parts: [{ text: systemPrompt.trim() }] } }
+      : {}),
   };
 
-  // Try models in order until one works
+  // Try models in round-robin order until one works
   for (let attempt = 0; attempt < MODELS.length; attempt++) {
     const modelIdx = (currentModelIdx + attempt) % MODELS.length;
     const model = MODELS[modelIdx];
@@ -100,7 +101,7 @@ export async function askAI(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(20_000),
+        signal: AbortSignal.timeout(15_000),
       });
 
       if (response.ok) {
@@ -108,7 +109,7 @@ export async function askAI(
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         if (text) {
           consecutiveFailures = 0;
-          currentModelIdx = modelIdx; // Stick with working model
+          currentModelIdx = modelIdx;
           return text;
         }
         return null;
@@ -116,20 +117,22 @@ export async function askAI(
 
       const status = response.status;
 
-      // Quota exhausted — try next model, open circuit if all fail
       if (status === 429) {
-        logger.warn(`[Gemini] Quota esgotada no modelo ${model} — tentando próximo...`);
+        logger.warn(`[Gemini] Quota esgotada no modelo ${model}`);
         consecutiveFailures++;
-        if (attempt === MODELS.length - 1 || consecutiveFailures >= 3) {
-          openCircuit();
-          return null;
-        }
-        continue; // try next model
+        // Try next model
+        continue;
       }
 
-      // Other error
-      const errorText = await response.text();
-      logger.error(`[Gemini] Erro ${status} no modelo ${model}: ${errorText.slice(0, 200)}`);
+      if (status === 404) {
+        logger.warn(`[Gemini] Modelo ${model} não encontrado — removendo da lista`);
+        // Skip this model permanently by advancing index
+        currentModelIdx = (modelIdx + 1) % MODELS.length;
+        continue;
+      }
+
+      // Other errors
+      logger.error(`[Gemini] Erro ${status} no modelo ${model}`);
       return null;
 
     } catch (err) {
@@ -139,10 +142,12 @@ export async function askAI(
         logger.error(`[Gemini] Erro de rede: ${err instanceof Error ? err.message : String(err)}`);
       }
       consecutiveFailures++;
-      if (consecutiveFailures >= 5) openCircuit();
-      return null;
     }
   }
 
+  // All models failed — open circuit if too many failures
+  if (consecutiveFailures >= 2) {
+    openCircuit();
+  }
   return null;
 }

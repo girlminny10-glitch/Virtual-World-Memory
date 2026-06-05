@@ -1,4 +1,4 @@
-import { askAI } from "./groq";
+import { askAI, isCircuitOpen, getFallbackPhrase } from "./groq";
 import {
   saveNpcMemory,
   saveNpcCreation,
@@ -192,7 +192,7 @@ export const recentConversations: Array<{
   message: string; response: string; ts: number;
 }> = [];
 
-let currentWorldEvent = "sol 🌞";
+export let currentWorldEvent = "sol 🌞";
 
 const npcPairConversations: Record<string, {
   history: Array<{ role: string; content: string; speakerName: string }>;
@@ -432,20 +432,25 @@ async function npcThinkAloud(npc: NpcState): Promise<void> {
   const now = Date.now();
   if (now - npc.lastSpoke < 45000) return;
 
-  const recentObjects = worldObjects.slice(-3).map(o => `${o.type} criado por ${o.creator}`).join(", ");
-  const objectCtx = recentObjects ? `\nObjetos recentes no mundo: ${recentObjects}.` : "";
+  let thought: string | null = null;
 
-  const thought = await aiQueue(() => askAI(
-    `Você é ${npc.name}. ${npc.personality}${objectCtx}
+  if (!isCircuitOpen()) {
+    const recentObjects = worldObjects.slice(-3).map(o => `${o.type} criado por ${o.creator}`).join(", ");
+    const objectCtx = recentObjects ? `\nObjetos recentes no mundo: ${recentObjects}.` : "";
+    thought = await aiQueue(() => askAI(
+      `Você é ${npc.name}. ${npc.personality}${objectCtx}
 Pense em voz alta sobre algo: o mundo, um objeto criado, ou o evento atual (${currentWorldEvent}). 1 frase criativa em português.`,
-    [],
-    70
-  ));
-
-  if (thought) {
-    npc.lastSpoke = now;
-    broadcastAll({ type: "npc-thought", npcId: npc.id, npcName: npc.name, npcColor: npc.color, thought, emotion: npc.emotion });
+      [],
+      70
+    ));
   }
+
+  // Use fallback phrase if AI unavailable
+  if (!thought) thought = `${getFallbackPhrase()} [${npc.name}]`;
+
+  npc.lastSpoke = now;
+  npc.emotion = randomEmotion();
+  broadcastAll({ type: "npc-thought", npcId: npc.id, npcName: npc.name, npcColor: npc.color, thought, emotion: npc.emotion });
 }
 
 async function npcCreateObject(npc: NpcState): Promise<void> {
@@ -540,18 +545,26 @@ export async function npcDecideAction(npc: NpcState): Promise<void> {
     const nearbyNPC = getNearbyNPC(npc);
     const nearbyPlayer = getNearbyPlayer(npc);
     const now = Date.now();
-
-    if (now - npc.lastSpoke < 15000) { npcMove(npc); return; }
-
     const roll = Math.random();
-    if (nearbyPlayer && roll < 0.25) { await npcGreetPlayer(npc, nearbyPlayer); return; }
-    if (nearbyNPC && roll < 0.5) { await npcTalkToNPC(npc, nearbyNPC); return; }
-    if (roll < 0.65) { await npcCreateObject(npc); return; }
-    if (roll < 0.78) { await npcThinkAloud(npc); return; }
-    npcMove(npc);
+
+    // AI actions — always fall through to movement regardless of success
+    if (now - npc.lastSpoke >= 20000) {
+      if (nearbyPlayer && roll < 0.25) {
+        await npcGreetPlayer(npc, nearbyPlayer);
+      } else if (nearbyNPC && roll < 0.5) {
+        await npcTalkToNPC(npc, nearbyNPC);
+      } else if (roll < 0.65) {
+        await npcCreateObject(npc);
+      } else if (roll < 0.78) {
+        await npcThinkAloud(npc);
+      }
+    }
+
+    // ALWAYS move — NPCs must never stand still
+    if (!npc.isMoving) npcMove(npc);
   } catch (err) {
-    logger.error({ err }, "Erro em npcDecideAction");
-    npcMove(npc);
+    logger.error({ err }, "Erro em npcDecideAction — movendo NPC");
+    if (!npc.isMoving) npcMove(npc);
   }
 }
 

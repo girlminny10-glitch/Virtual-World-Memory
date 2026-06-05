@@ -3,7 +3,7 @@ import type { IncomingMessage } from "http";
 import { logger } from "./logger";
 import {
   npcs, players, worldObjects, respondToPlayer, broadcastToAllNpcs,
-  setBroadcast, npcMove, getRecentConversations,
+  setBroadcast, npcMove, getRecentConversations, currentWorldEvent,
 } from "./world";
 
 let _wss: WebSocketServer | null = null;
@@ -43,6 +43,7 @@ export function createWebSocketServer(server: import("http").Server): WebSocketS
       worldObjects,
       players: Object.values(players),
       recentConversations: getRecentConversations(),
+      currentWeather: currentWorldEvent,
     }));
 
     broadcast({ type: "player-joined", playerId, player: players[playerId] }, ws);
