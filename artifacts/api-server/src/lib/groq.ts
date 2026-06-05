@@ -82,8 +82,9 @@ export async function askAI(
   const body = {
     contents,
     generationConfig: {
-      maxOutputTokens: Math.min(maxTokens, 256),
+      maxOutputTokens: Math.min(maxTokens, 300),
       temperature: 0.75,
+      topP: 0.9,
     },
     ...(systemPrompt?.trim()
       ? { systemInstruction: { parts: [{ text: systemPrompt.trim() }] } }
@@ -121,6 +122,18 @@ export async function askAI(
         logger.warn(`[Gemini] Quota esgotada no modelo ${model}`);
         consecutiveFailures++;
         // Try next model
+        continue;
+      }
+
+      if (status === 401) {
+        logger.error(`[Gemini] Token inválido (401) — verifique GEMINI_API_KEY`);
+        consecutiveFailures = 0;
+        return null;
+      }
+
+      if (status === 503) {
+        logger.warn(`[Gemini] Serviço indisponível (503) no modelo ${model} — tentando próximo`);
+        consecutiveFailures++;
         continue;
       }
 

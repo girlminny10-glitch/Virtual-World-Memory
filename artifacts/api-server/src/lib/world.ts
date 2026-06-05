@@ -506,7 +506,7 @@ Pense em voz alta sobre algo que está na sua mente agora. Pode ser:
 
 async function npcCreateObject(npc: NpcState): Promise<void> {
   const now = Date.now();
-  if (npc.createdThings.length >= 8) return;
+  if (npc.createdThings.length >= 4) return;
 
   const existingCreations = npc.createdThings.map(t => t.description).join("; ");
   const worldCtx = buildWorldContext();
@@ -536,8 +536,39 @@ A cor deve refletir o humor ou a essência da criação. Seja poético, autênti
 
   try {
     const jsonMatch = response.match(/\{[\s\S]*?\}/);
-    if (!jsonMatch) return;
-    const data = JSON.parse(jsonMatch[0]);
+    const data = jsonMatch
+      ? (() => { try { return JSON.parse(jsonMatch[0]); } catch { return null; } })()
+      : null;
+    if (!data) {
+      // Fallback: create a random object if JSON parse fails
+      const fallbackDescriptions = [
+        `${npc.name} criou algo misterioso que pulsa com energia desconhecida`,
+        `Uma criação surpreendente de ${npc.name} materializa-se no ar`,
+        `${npc.name} manifesta um objeto que desafia toda lógica conhecida`,
+        `A imaginação de ${npc.name} toma forma em algo indescritível`,
+      ];
+      const fallbackDesc = fallbackDescriptions[Math.floor(Math.random() * fallbackDescriptions.length)];
+      const fallbackObj: WorldObject = {
+        id: `obj-${worldObjectIdCounter++}`,
+        creator: npc.name, creatorId: npc.id, creatorColor: npc.color,
+        type: "custom",
+        description: fallbackDesc,
+        position: { x: npc.position.x + (Math.random() - 0.5) * 20, z: npc.position.z + (Math.random() - 0.5) * 20 },
+        createdAt: now,
+        color: npc.color,
+        scale: 0.7 + Math.random() * 0.8,
+      };
+      worldObjects.push(fallbackObj);
+      if (worldObjects.length > 250) worldObjects.shift();
+      npc.createdThings.push({ id: fallbackObj.id, type: fallbackObj.type, description: fallbackObj.description, createdAt: now });
+      npc.currentAction = `criou: ${fallbackObj.description.slice(0, 40)}`;
+      saveWorldObject(fallbackObj).catch(() => {});
+      saveNpcCreation(npc.id, fallbackObj.description, fallbackObj.type).catch(() => {});
+      broadcastAll({ type: "npc-created-object", object: fallbackObj, npcName: npc.name, npcId: npc.id, npcColor: npc.color, description: fallbackObj.description, emotion: npc.emotion });
+      pushToFeed({ fromName: npc.name, fromColor: npc.color, toName: "criação", toColor: npc.color, message: `criou: ${fallbackObj.description}`, response: "", ts: now, type: "creation" });
+      logger.debug({ npc: npc.name }, "Objeto criado via fallback (JSON inválido)");
+      return;
+    }
     const type = "custom"; // NPCs always create freely — renderer handles the visuals
     const obj: WorldObject = {
       id: `obj-${worldObjectIdCounter++}`,
@@ -628,14 +659,16 @@ export async function npcDecideAction(npc: NpcState): Promise<void> {
     const timeSinceSpoke = now - npc.lastSpoke;
 
     if (timeSinceSpoke >= 18000) {
-      if (nearbyPlayer && roll < 0.30) {
+      if (nearbyPlayer && roll < 0.25) {
         await npcGreetPlayer(npc, nearbyPlayer);
-      } else if (nearbyNPC && roll < 0.55) {
+      } else if (nearbyNPC && roll < 0.50) {
         await npcTalkToNPC(npc, nearbyNPC);
-      } else if (roll < 0.72) {
+      } else if (roll < 0.65) {
         await npcCreateObject(npc);
-      } else {
+      } else if (roll < 0.75) {
         await npcThinkAloud(npc);
+      } else {
+        npcMove(npc);
       }
     }
 
@@ -708,7 +741,7 @@ export async function broadcastToAllNpcs(playerMessage: string, playerName: stri
     const reply = await respondToPlayer(npc, playerMessage, playerName);
     if (reply) {
       broadcastAll({ type: "npc-response", npcId: npc.id, npcName: npc.name, npcColor: npc.color, response: reply, emotion: npc.emotion });
-      await new Promise(r => setTimeout(r, 2500));
+      await new Promise(r => setTimeout(r, 800));
     }
   }
 }
