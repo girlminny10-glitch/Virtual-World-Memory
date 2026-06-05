@@ -1,0 +1,4 @@
+- [Gemini quota + circuit breaker](gemini-quota.md) — Gemini free tier hits daily quota fast; circuit breaker in groq.ts stops retries for 90s; models rotate gemini-2.0-flash-lite → gemini-1.5-flash-8b → gemini-2.0-flash.
+- [NPC movement lerp](npc-movement.md) — npc-arrived must NOT teleport (causes disappear bug); only update targetPos so lerp completes; lerp speed 10 units/sec matches server timer.
+- [saveNpcPairConversation params](supabase-pair-conv.md) — function signature is (pairKey, history, topic); previously called with (pairKey, topic, history) — swapped bug.
+- [Supabase WebSocket transport](supabase-ws.md) — pass `WebSocket as any` to avoid TS2322 type error with ws@8 and @supabase/supabase-js realtime transport.

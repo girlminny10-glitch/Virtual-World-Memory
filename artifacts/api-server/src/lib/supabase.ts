@@ -32,7 +32,7 @@ if (!supabaseReady) {
 
 export const supabase = supabaseReady
   ? createClient(supabaseUrl, supabaseKey!, {
-      realtime: { transport: WebSocket },
+      realtime: { transport: WebSocket as any },
     })
   : null;
 

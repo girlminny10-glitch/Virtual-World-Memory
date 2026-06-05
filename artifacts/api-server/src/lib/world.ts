@@ -15,8 +15,8 @@ import {
 } from "./supabase";
 import { logger } from "./logger";
 
-export function getRecentConversations() { 
-  return recentConversations.slice(0, 15); 
+export function getRecentConversations() {
+  return recentConversations.slice(0, 15);
 }
 
 export const WORLD_SIZE = 300;
@@ -28,7 +28,6 @@ export interface NpcRelationship {
   reason: string;
   lastInteraction: number;
 }
-
 
 export interface NpcState {
   id: string;
@@ -82,6 +81,8 @@ const EMOTIONS = [
   "triste 😢", "bravo 😠", "entusiasmado 🚀", "sonhador 💭", "grato 🙏",
 ];
 
+const WORLD_EVENTS = ["chuva 🌧️", "sol 🌞", "noite 🌙", "festa 🎉", "tempestade ⛈️", "amanhecer 🌅", "neblina 🌫️"];
+
 function randomEmotion() { return EMOTIONS[Math.floor(Math.random() * EMOTIONS.length)]; }
 function randomPos(spread = WORLD_SIZE * 0.7): Position {
   return { x: (Math.random() - 0.5) * spread, z: (Math.random() - 0.5) * spread };
@@ -112,7 +113,6 @@ function randomOutfit(gender: "female" | "male") {
 }
 
 // ─── Global AI Throttling ──────────────────────────────────────────────────
-// Evita chamadas simultâneas que estouram o rate limit da API
 let isAiProcessing = false;
 async function aiQueue<T>(fn: () => Promise<T>): Promise<T | null> {
   if (isAiProcessing) {
@@ -122,8 +122,7 @@ async function aiQueue<T>(fn: () => Promise<T>): Promise<T | null> {
   isAiProcessing = true;
   try {
     const res = await fn();
-    // Pequena pausa após cada chamada para o Gemini "respirar"
-    await new Promise(r => setTimeout(r, 2000));
+    await new Promise(r => setTimeout(r, 3000));
     return res;
   } finally {
     isAiProcessing = false;
@@ -192,6 +191,8 @@ export const recentConversations: Array<{
   fromName: string; fromColor: string; toName: string; toColor: string;
   message: string; response: string; ts: number;
 }> = [];
+
+let currentWorldEvent = "sol 🌞";
 
 const npcPairConversations: Record<string, {
   history: Array<{ role: string; content: string; speakerName: string }>;
@@ -294,7 +295,7 @@ function buildRelationshipContext(npc: NpcState, other: NpcState): string {
 
 function buildLearningsContext(npc: NpcState): string {
   if (npc.learnings.length === 0) return "";
-  return `\nCoisas que você aprendeu com experiências anteriores:\n${npc.learnings.slice(0, 5).map((l, i) => `${i + 1}. ${l}`).join("\n")}`;
+  return `\nCoisas que você aprendeu:\n${npc.learnings.slice(0, 5).map((l, i) => `${i + 1}. ${l}`).join("\n")}`;
 }
 
 function updateRelationship(a: NpcState, b: NpcState, delta: number, reason: string) {
@@ -311,6 +312,32 @@ let broadcastFn: BroadcastFn = () => {};
 export function setBroadcast(fn: BroadcastFn): void { broadcastFn = fn; }
 function broadcastAll(data: unknown): void { broadcastFn(data); }
 
+// ─── Broadcast World Event (rain, party, night, etc.) ─────────────────────────
+export function broadcastWorldEvent(): void {
+  const event = WORLD_EVENTS[Math.floor(Math.random() * WORLD_EVENTS.length)];
+  currentWorldEvent = event;
+  broadcastAll({ type: "world-event", event });
+  logger.info({ event }, "Evento mundial disparado");
+
+  // NPCs comment on the event
+  const commentingNpcs = Object.values(npcs).sort(() => Math.random() - 0.5).slice(0, 2);
+  let delay = 2000;
+  for (const npc of commentingNpcs) {
+    setTimeout(() => {
+      const prompt = `Você é ${npc.name}. ${npc.personality}
+Um evento aconteceu no mundo: ${event}.
+Reaja a este evento em 1 frase curta e pessoal em português, usando emojis.`;
+      aiQueue(() => askAI(prompt, [], 60)).then(reaction => {
+        if (reaction) {
+          npc.emotion = randomEmotion();
+          broadcastAll({ type: "npc-thought", npcId: npc.id, npcName: npc.name, npcColor: npc.color, thought: reaction, emotion: npc.emotion });
+        }
+      });
+    }, delay);
+    delay += 4000;
+  }
+}
+
 export function npcMove(npc: NpcState): void {
   const target = randomPos();
   npc.targetPosition = target;
@@ -322,13 +349,12 @@ export function npcMove(npc: NpcState): void {
     npc.position = { ...target };
     npc.isMoving = false;
     broadcastAll({ type: "npc-arrived", npcId: npc.id, position: npc.position });
-  }, Math.max(2000, (d / 10) * 1000));
+  }, Math.max(2000, (d / 8) * 1000));
 }
 
 async function npcTalkToNPC(npc: NpcState, other: NpcState): Promise<void> {
   const now = Date.now();
-  // Aumentado o intervalo de fala para economizar cota
-  if (now - npc.lastSpoke < 15000) return;
+  if (now - npc.lastSpoke < 20000) return;
 
   const pairKey = getPairKey(npc.id, other.id);
   if (!npcPairConversations[pairKey]) {
@@ -339,21 +365,21 @@ async function npcTalkToNPC(npc: NpcState, other: NpcState): Promise<void> {
 
   const relCtx = buildRelationshipContext(npc, other);
   const learningsCtx = buildLearningsContext(npc);
-  const recentHistory = pairConv.history.slice(-6);
+  const recentHistory = pairConv.history.slice(-8);
   const historyText = recentHistory.length > 0
-    ? `\nConversa anterior entre vocês:\n${recentHistory.map(h => `${h.speakerName}: ${h.content}`).join("\n")}`
+    ? `\nConversa recente entre vocês:\n${recentHistory.map(h => `${h.speakerName}: ${h.content}`).join("\n")}`
     : "";
   const topicCtx = isOngoingConversation
-    ? `\nVocês estavam conversando sobre: "${pairConv.topic}". Continue a conversa de onde parou, de forma natural.`
-    : "";
+    ? `\nVocês estavam conversando sobre: "${pairConv.topic}". Continue a conversa de onde parou, aprofundando o tema.`
+    : `\nComece uma nova conversa interessante baseada na sua personalidade.`;
+  const worldCtx = `\nEvento atual no mundo: ${currentWorldEvent}.`;
 
-  const promptA = `Você é ${npc.name}, um(a) NPC com personalidade única: ${npc.personality}
-${relCtx}${learningsCtx}${historyText}${topicCtx}
-Você está conversando com ${other.name}.
-Responda de forma curta, natural e pessoal em português. Use emojis.
-Não repita o que o outro disse. Traga algo novo para a conversa.`;
+  const promptA = `Você é ${npc.name}, com personalidade: ${npc.personality}
+${relCtx}${learningsCtx}${historyText}${topicCtx}${worldCtx}
+Você está conversando com ${other.name}. Use memória da conversa anterior.
+Resposta curta (1-2 frases), natural, pessoal, em português. Use emojis.`;
 
-  const replyA = await aiQueue(() => askAI(promptA, [], 80));
+  const replyA = await aiQueue(() => askAI(promptA, [], 100));
   if (!replyA) return;
 
   npc.lastSpoke = now;
@@ -364,27 +390,37 @@ Não repita o que o outro disse. Traga algo novo para a conversa.`;
 
   broadcastAll({ type: "npc-response", npcId: npc.id, npcName: npc.name, npcColor: npc.color, response: replyA, emotion: npc.emotion });
 
-  // Update topic and relationships periodically
-  if (pairConv.turns % 4 === 0) {
-    const summaryPrompt = `Resuma o tópico atual da conversa entre ${npc.name} e ${other.name} em uma frase curta (ex: "discutindo arte", "falando sobre o clima").`;
-    const histStr = pairConv.history.slice(-4).map(h => h.content).join(" | ");
+  // Add to recent conversations feed
+  recentConversations.unshift({
+    fromName: npc.name, fromColor: npc.color,
+    toName: other.name, toColor: other.color,
+    message: replyA, response: "", ts: now,
+  });
+  if (recentConversations.length > 20) recentConversations.pop();
+
+  // Update topic and relationships every 6 turns (longer conversations)
+  if (pairConv.turns % 6 === 0) {
+    const summaryPrompt = `Resuma o tópico atual da conversa entre ${npc.name} e ${other.name} em uma frase curta.`;
+    const histStr = pairConv.history.slice(-6).map(h => h.content).join(" | ");
     aiQueue(() => askAI(summaryPrompt, [{ role: "user", content: histStr }], 40)).then(topic => {
       if (topic) pairConv.topic = topic.replace(/[""]/g, "").trim();
     });
     updateRelationship(npc, other, 2, "conversa agradável");
-    saveNpcPairConversation(pairKey, pairConv.topic, pairConv.history).catch(() => {});
+    // Fixed: correct parameter order (history, topic)
+    saveNpcPairConversation(pairKey, pairConv.history, pairConv.topic).catch(() => {});
   }
+
+  totalConversations++;
 }
 
 async function npcGreetPlayer(npc: NpcState, player: any): Promise<void> {
   const now = Date.now();
-  if (now - npc.lastSpoke < 20000) return;
+  if (now - npc.lastSpoke < 30000) return;
 
   const prompt = `Você é ${npc.name}. ${npc.personality}
-Você viu o jogador ${player.name} por perto. 
-Dê um oi rápido e amigável em português (1 frase curta).`;
+O jogador ${player.name} está por perto. Dê um cumprimento amigável e curto em português, mencionando @${player.name}. Use emojis. 1 frase.`;
 
-  const greeting = await aiQueue(() => askAI(prompt, [], 60));
+  const greeting = await aiQueue(() => askAI(prompt, [], 70));
   if (greeting) {
     npc.lastSpoke = now;
     npc.emotion = "feliz 😊";
@@ -394,13 +430,16 @@ Dê um oi rápido e amigável em português (1 frase curta).`;
 
 async function npcThinkAloud(npc: NpcState): Promise<void> {
   const now = Date.now();
-  if (now - npc.lastSpoke < 30000) return;
+  if (now - npc.lastSpoke < 45000) return;
+
+  const recentObjects = worldObjects.slice(-3).map(o => `${o.type} criado por ${o.creator}`).join(", ");
+  const objectCtx = recentObjects ? `\nObjetos recentes no mundo: ${recentObjects}.` : "";
 
   const thought = await aiQueue(() => askAI(
-    `Você é ${npc.name}. ${npc.personality}
-Pense em voz alta sobre algo no mundo. 1 frase curta em português.`,
+    `Você é ${npc.name}. ${npc.personality}${objectCtx}
+Pense em voz alta sobre algo: o mundo, um objeto criado, ou o evento atual (${currentWorldEvent}). 1 frase criativa em português.`,
     [],
-    60
+    70
   ));
 
   if (thought) {
@@ -413,33 +452,68 @@ async function npcCreateObject(npc: NpcState): Promise<void> {
   const now = Date.now();
   if (npc.createdThings.length >= 4) return;
 
-  const typeList = OBJECT_TYPES.slice(0, 20).join(", ");
+  const typeList = OBJECT_TYPES.slice(0, 25).join(", ");
   const response = await aiQueue(() => askAI(
     `Você é ${npc.name}. ${npc.personality}
-Crie algo para o mundo. Tipos: ${typeList}.
-Responda APENAS JSON: {"type":"tipo","description":"descrição curta","color":"#hex"}`,
+Crie algo para o mundo baseado na sua personalidade. Tipos disponíveis: ${typeList}.
+Responda APENAS JSON válido: {"type":"tipo","description":"descrição criativa curta","color":"#hexcolor"}`,
     [],
-    100
+    120
   ));
 
   if (!response) return;
 
   try {
-    const data = JSON.parse(response.replace(/```json|```/g, "").trim());
+    const jsonMatch = response.match(/\{[^}]+\}/);
+    if (!jsonMatch) return;
+    const data = JSON.parse(jsonMatch[0]);
     const obj: WorldObject = {
       id: `obj-${worldObjectIdCounter++}`,
       creator: npc.name, creatorId: npc.id, creatorColor: npc.color,
-      type: data.type || "rock", description: data.description || "algo especial",
+      type: OBJECT_TYPES.includes(data.type) ? data.type : "rock",
+      description: data.description || "algo especial",
       position: { x: npc.position.x + (Math.random() - 0.5) * 15, z: npc.position.z + (Math.random() - 0.5) * 15 },
-      createdAt: now, color: data.color ?? npc.color, scale: 0.6 + Math.random() * 0.7,
+      createdAt: now,
+      color: /^#[0-9a-fA-F]{3,6}$/.test(data.color) ? data.color : npc.color,
+      scale: 0.6 + Math.random() * 0.7,
     };
     worldObjects.push(obj);
     npc.createdThings.push({ id: obj.id, type: obj.type, description: obj.description, createdAt: now });
     npc.currentAction = obj.description;
     saveWorldObject(obj).catch(() => {});
+    saveNpcCreation(npc.id, obj.description, obj.type).catch(() => {});
     broadcastAll({ type: "npc-created-object", object: obj, npcName: npc.name, npcId: npc.id, npcColor: npc.color, description: obj.description, emotion: npc.emotion });
+
+    // Collective intelligence: other nearby NPCs may react to this creation
+    setTimeout(() => npcReactToCreation(obj, npc), 5000);
   } catch (err) {
-    logger.debug("Erro ao criar objeto");
+    logger.debug({ err }, "Erro ao parsear objeto criado pela IA");
+  }
+}
+
+// ─── Collective Intelligence: NPCs react to what others built ──────────────────
+async function npcReactToCreation(obj: WorldObject, creator: NpcState): Promise<void> {
+  const nearby = Object.values(npcs).filter(n =>
+    n.id !== creator.id && dist(n.position, obj.position) < 60 && Date.now() - n.lastSpoke > 20000
+  );
+  if (nearby.length === 0) return;
+
+  const reactor = nearby[Math.floor(Math.random() * nearby.length)];
+  const relCtx = buildRelationshipContext(reactor, creator);
+
+  const reaction = await aiQueue(() => askAI(
+    `Você é ${reactor.name}. ${reactor.personality}
+${relCtx}
+${creator.name} acabou de criar: "${obj.description}" (um ${obj.type}).
+Reaja em 1 frase curta e genuína em português, mostrando sua personalidade. Use emojis.`,
+    [],
+    80
+  ));
+
+  if (reaction) {
+    reactor.lastSpoke = Date.now();
+    reactor.emotion = randomEmotion();
+    broadcastAll({ type: "npc-thought", npcId: reactor.id, npcName: reactor.name, npcColor: reactor.color, thought: reaction, emotion: reactor.emotion });
   }
 }
 
@@ -467,34 +541,66 @@ export async function npcDecideAction(npc: NpcState): Promise<void> {
     const nearbyPlayer = getNearbyPlayer(npc);
     const now = Date.now();
 
-    if (now - npc.lastSpoke < 10000) { npcMove(npc); return; }
+    if (now - npc.lastSpoke < 15000) { npcMove(npc); return; }
 
     const roll = Math.random();
-    if (nearbyPlayer && roll < 0.2) { await npcGreetPlayer(npc, nearbyPlayer); return; }
-    if (nearbyNPC && roll < 0.4) { await npcTalkToNPC(npc, nearbyNPC); return; }
-    if (roll < 0.5) { await npcCreateObject(npc); return; }
-    if (roll < 0.6) { await npcThinkAloud(npc); return; }
+    if (nearbyPlayer && roll < 0.25) { await npcGreetPlayer(npc, nearbyPlayer); return; }
+    if (nearbyNPC && roll < 0.5) { await npcTalkToNPC(npc, nearbyNPC); return; }
+    if (roll < 0.65) { await npcCreateObject(npc); return; }
+    if (roll < 0.78) { await npcThinkAloud(npc); return; }
     npcMove(npc);
   } catch (err) {
+    logger.error({ err }, "Erro em npcDecideAction");
     npcMove(npc);
   }
 }
 
 export async function respondToPlayer(npc: NpcState, playerMessage: string, playerName: string): Promise<string | null> {
-  // Chamadas de jogador têm prioridade, mas ainda usam a fila
-  const reply = await aiQueue(() => {
-    const systemPrompt = `Você é ${npc.name}. ${npc.personality} Emoção: ${npc.emotion}. Você fala com ${playerName}. Responda curto e natural em português.`;
-    const messages = [...npc.conversationHistory.slice(-6), { role: "user" as const, content: `${playerName}: ${playerMessage}` }];
-    return askAI(systemPrompt, messages, 150);
-  });
+  console.log(`[CHAT] Jogador "${playerName}" → NPC "${npc.name}": "${playerMessage.slice(0, 80)}"`);
+
+  // Build rich context for the NPC
+  const recentMemory = npc.conversationHistory.slice(-10)
+    .map(m => `${m.role === "user" ? playerName : npc.name}: ${m.content}`)
+    .join("\n");
+  const memoryCtx = recentMemory ? `\nMemória da conversa com ${playerName}:\n${recentMemory}` : "";
+  const learningsCtx = buildLearningsContext(npc);
+
+  const systemPrompt = `Você é ${npc.name}. ${npc.personality}
+Emoção atual: ${npc.emotion}.
+${memoryCtx}${learningsCtx}
+Você está tendo uma conversa com o jogador ${playerName}.
+Responda de forma natural, pessoal e envolvente em português. Pode fazer perguntas. Use emojis. 2-3 frases.`;
+
+  const messages = npc.conversationHistory.slice(-10).concat([
+    { role: "user" as const, content: `${playerName}: ${playerMessage}` }
+  ]);
+
+  const reply = await aiQueue(() => askAI(systemPrompt, messages, 180));
 
   if (reply) {
+    console.log(`[CHAT] NPC "${npc.name}" → "${playerName}": "${reply.slice(0, 80)}"`);
     npc.conversationHistory.push({ role: "user", content: `${playerName}: ${playerMessage}` });
     npc.conversationHistory.push({ role: "assistant", content: reply });
-    if (npc.conversationHistory.length > 20) npc.conversationHistory.splice(0, 2);
+    if (npc.conversationHistory.length > 30) npc.conversationHistory.splice(0, 2);
     npc.lastSpoke = Date.now();
+    npc.emotion = randomEmotion();
     saveNpcMemory(npc.id, "user", `${playerName}: ${playerMessage}`).catch(() => {});
     saveNpcMemory(npc.id, "assistant", reply).catch(() => {});
+
+    // Learn from long conversations
+    if (npc.conversationHistory.length > 0 && npc.conversationHistory.length % 10 === 0) {
+      const learningPrompt = `Da conversa com ${playerName}, o que você aprendeu de mais importante? Responda em 1 frase curta.`;
+      aiQueue(() => askAI(learningPrompt, npc.conversationHistory.slice(-6), 50)).then(learning => {
+        if (learning) {
+          npc.learnings.push(learning);
+          if (npc.learnings.length > 20) npc.learnings.shift();
+          saveNpcLearning(npc.id, learning).catch(() => {});
+          broadcastAll({ type: "npc-learned", npcId: npc.id, npcName: npc.name, npcColor: npc.color, learning });
+        }
+      });
+    }
+  } else {
+    console.log(`[CHAT] NPC "${npc.name}" não conseguiu responder (IA ocupada ou erro)`);
   }
   return reply;
 }
@@ -506,21 +612,20 @@ export async function broadcastToAllNpcs(playerMessage: string, playerName: stri
     const reply = await respondToPlayer(npc, playerMessage, playerName);
     if (reply) {
       broadcastAll({ type: "npc-response", npcId: npc.id, npcName: npc.name, npcColor: npc.color, response: reply, emotion: npc.emotion });
-      await new Promise(r => setTimeout(r, 2000));
+      await new Promise(r => setTimeout(r, 2500));
     }
   }
 }
 
 export async function aiLoop(): Promise<void> {
   const npcList = Object.values(npcs);
+  // Pick 1 random NPC per loop cycle
   const active = [...npcList].sort(() => Math.random() - 0.5).slice(0, 1);
   for (const npc of active) {
     try {
       await npcDecideAction(npc);
-      // Intervalo maior entre ações automáticas para priorizar interações com o jogador
-      await new Promise(r => setTimeout(r, 20000)); 
     } catch (err) {
-      logger.error("Erro no AI loop");
+      logger.error({ err }, "Erro no AI loop — continuando");
     }
   }
 }
