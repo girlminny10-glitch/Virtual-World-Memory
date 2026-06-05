@@ -504,17 +504,69 @@ Pense em voz alta sobre algo que está na sua mente agora. Pode ser:
   });
 }
 
+// ─── Personality-driven offline creations (used when AI quota is exhausted) ───
+const NPC_OFFLINE_CREATIONS: Record<string, { desc: string; color: string }[]> = {
+  "npc-1": [ // Alex — aventureira, otimista
+    { desc: "Um mapa de estrelas feito de cristais brilhantes que aponta para lugares ainda não explorados neste mundo", color: "#FF9B6B" },
+    { desc: "Uma ponte de arco-íris suspensa no ar, conectando dois pontos impossíveis com alegria pura", color: "#FFB347" },
+    { desc: "Uma lanterna mágica que projeta cenas de aventuras passadas nas paredes ao redor como um cinema", color: "#FF6B6B" },
+    { desc: "Um globo giratório do mundo que mostra todos os caminhos que Alex já percorreu pulsando em luz dourada", color: "#FFA07A" },
+  ],
+  "npc-2": [ // Jordan — filósofo, analítico
+    { desc: "Uma biblioteca suspensa em espiral com livros que se escrevem sozinhos registrando os segredos do universo", color: "#4ECDC4" },
+    { desc: "Um relógio sem ponteiros que mede o tempo em emoções e não em segundos, vibrado suavemente ao redor", color: "#45B7D1" },
+    { desc: "Um cubo de vidro infinito contendo teorias matemáticas flutuando como partículas de luz azul", color: "#7FB3D3" },
+    { desc: "Um espelho que não reflete o presente mas sim o que poderia ter sido, cercado de equações gravadas na pedra", color: "#5DADE2" },
+  ],
+  "npc-3": [ // Luna — artística, sonhadora
+    { desc: "Uma tela gigante pintada com as cores dos sonhos de Luna, onde cada pincelada muda conforme o vento sopra", color: "#FFE66D" },
+    { desc: "Um jardim de flores feitas de vidro colorido que emitem música suave quando tocadas pela brisa", color: "#F7DC6F" },
+    { desc: "Uma escultura de névoa dourada que assume formas diferentes dependendo de quem a observa com o coração", color: "#FFD700" },
+    { desc: "Um portal de aquarela vivo onde as cores escorrem para dentro formando paisagens oníricas sem fim", color: "#FDBCB4" },
+  ],
+  "npc-4": [ // Marcus — pragmático, construtor
+    { desc: "Uma fortaleza sólida de pedra antiga com muralhas que absorvem impactos e protegem todos que se aproximam", color: "#A8E6CF" },
+    { desc: "Um monumento de granito com os nomes de todos que Marcus prometeu proteger gravados com ouro", color: "#88D8B0" },
+    { desc: "Uma torre de vigilância quadrada e inquebrável que nunca permitirá que ninguém seja prejudicado sob sua sombra", color: "#6BCB77" },
+    { desc: "Um pilar de ferro fundido plantado no centro do mundo simbolizando a promessa de jamais recuar perante o mal", color: "#4D9078" },
+  ],
+  "npc-5": [ // Zara — energética, competitiva
+    { desc: "Um palco giratório com luzes explosivas que convida todos ao redor para dançar sem parar a noite toda", color: "#FF8B94" },
+    { desc: "Uma pista de corrida circular feita de luz neon onde o vencedor recebe um troféu que brilha por uma semana", color: "#FF6B9D" },
+    { desc: "Uma roda-gigante de fogos de artifício que lança confetes coloridos cada vez que alguém ri perto dela", color: "#C06C84" },
+    { desc: "Um gerador de festa eterno com música que faz os pés se moverem sozinhos e o coração acelerar de alegria", color: "#FF4E6A" },
+  ],
+};
+
+function getOfflineCreation(npc: NpcState): { desc: string; color: string } {
+  const pool = NPC_OFFLINE_CREATIONS[npc.id] ?? [];
+  const used = new Set(npc.createdThings.map(t => t.description));
+  const available = pool.filter(c => !used.has(c.desc));
+  if (available.length > 0) return available[Math.floor(Math.random() * available.length)];
+  // All personality ones used — generate generic but rich fallback
+  const generics = [
+    { desc: `${npc.name} esculpiu um símbolo pessoal que resume tudo que acredita e ama neste mundo`, color: npc.color },
+    { desc: `Uma criação única de ${npc.name} que pulsa com a energia da sua alma mais profunda`, color: npc.color },
+    { desc: `${npc.name} materializou um sonho antigo em forma física para que todos possam ver e sentir`, color: npc.color },
+  ];
+  return generics[Math.floor(Math.random() * generics.length)];
+}
+
 async function npcCreateObject(npc: NpcState): Promise<void> {
   const now = Date.now();
-  if (npc.createdThings.length >= 4) return;
+  if (npc.createdThings.length >= 15) return;
 
   const existingCreations = npc.createdThings.map(t => t.description).join("; ");
   const worldCtx = buildWorldContext();
   const learningsCtx = buildLearningsContext(npc);
 
-  // NPCs always create freely — no preset types, pure imagination
-  const response = await aiQueue(() => askAI(
-    `Você é ${npc.name}. ${npc.personality}
+  // Try AI first; if unavailable, fall back to personality-driven local creation
+  let description: string | null = null;
+  let color: string = npc.color;
+
+  if (!isCircuitOpen()) {
+    const response = await aiQueue(() => askAI(
+      `Você é ${npc.name}. ${npc.personality}
 Seu objetivo de vida: ${npc.goal}${learningsCtx}
 ${worldCtx}
 ${existingCreations ? `Suas criações anteriores: ${existingCreations}.` : "Você ainda não criou nada neste mundo."}
@@ -528,75 +580,58 @@ Responda APENAS com JSON válido (sem markdown), assim:
 {"description":"descrição vívida e pessoal em português do que você criou e por que, no mínimo 15 palavras","color":"#hexcolor"}
 
 A cor deve refletir o humor ou a essência da criação. Seja poético, autêntico, surpreendente.`,
-    [],
-    160
-  ));
+      [],
+      160
+    ));
 
-  if (!response) return;
-
-  try {
-    const jsonMatch = response.match(/\{[\s\S]*?\}/);
-    const data = jsonMatch
-      ? (() => { try { return JSON.parse(jsonMatch[0]); } catch { return null; } })()
-      : null;
-    if (!data) {
-      // Fallback: create a random object if JSON parse fails
-      const fallbackDescriptions = [
-        `${npc.name} criou algo misterioso que pulsa com energia desconhecida`,
-        `Uma criação surpreendente de ${npc.name} materializa-se no ar`,
-        `${npc.name} manifesta um objeto que desafia toda lógica conhecida`,
-        `A imaginação de ${npc.name} toma forma em algo indescritível`,
-      ];
-      const fallbackDesc = fallbackDescriptions[Math.floor(Math.random() * fallbackDescriptions.length)];
-      const fallbackObj: WorldObject = {
-        id: `obj-${worldObjectIdCounter++}`,
-        creator: npc.name, creatorId: npc.id, creatorColor: npc.color,
-        type: "custom",
-        description: fallbackDesc,
-        position: { x: npc.position.x + (Math.random() - 0.5) * 20, z: npc.position.z + (Math.random() - 0.5) * 20 },
-        createdAt: now,
-        color: npc.color,
-        scale: 0.7 + Math.random() * 0.8,
-      };
-      worldObjects.push(fallbackObj);
-      if (worldObjects.length > 250) worldObjects.shift();
-      npc.createdThings.push({ id: fallbackObj.id, type: fallbackObj.type, description: fallbackObj.description, createdAt: now });
-      npc.currentAction = `criou: ${fallbackObj.description.slice(0, 40)}`;
-      saveWorldObject(fallbackObj).catch(() => {});
-      saveNpcCreation(npc.id, fallbackObj.description, fallbackObj.type).catch(() => {});
-      broadcastAll({ type: "npc-created-object", object: fallbackObj, npcName: npc.name, npcId: npc.id, npcColor: npc.color, description: fallbackObj.description, emotion: npc.emotion });
-      pushToFeed({ fromName: npc.name, fromColor: npc.color, toName: "criação", toColor: npc.color, message: `criou: ${fallbackObj.description}`, response: "", ts: now, type: "creation" });
-      logger.debug({ npc: npc.name }, "Objeto criado via fallback (JSON inválido)");
-      return;
+    if (response) {
+      try {
+        const jsonMatch = response.match(/\{[\s\S]*?\}/);
+        const data = jsonMatch
+          ? (() => { try { return JSON.parse(jsonMatch[0]); } catch { return null; } })()
+          : null;
+        if (data?.description) {
+          description = data.description;
+          if (/^#[0-9a-fA-F]{3,6}$/.test(data.color)) color = data.color;
+        }
+      } catch {
+        // fall through to offline creation
+      }
     }
-    const type = "custom"; // NPCs always create freely — renderer handles the visuals
-    const obj: WorldObject = {
-      id: `obj-${worldObjectIdCounter++}`,
-      creator: npc.name, creatorId: npc.id, creatorColor: npc.color,
-      type,
-      description: data.description || `${npc.name} criou algo especial`,
-      position: { x: npc.position.x + (Math.random() - 0.5) * 20, z: npc.position.z + (Math.random() - 0.5) * 20 },
-      createdAt: now,
-      color: /^#[0-9a-fA-F]{3,6}$/.test(data.color) ? data.color : npc.color,
-      scale: 0.7 + Math.random() * 0.8,
-    };
-    worldObjects.push(obj);
-    if (worldObjects.length > 250) worldObjects.shift();
-    npc.createdThings.push({ id: obj.id, type: obj.type, description: obj.description, createdAt: now });
-    npc.currentAction = `criou: ${obj.description.slice(0, 40)}`;
-    saveWorldObject(obj).catch(() => {});
-    saveNpcCreation(npc.id, obj.description, obj.type).catch(() => {});
-    broadcastAll({ type: "npc-created-object", object: obj, npcName: npc.name, npcId: npc.id, npcColor: npc.color, description: obj.description, emotion: npc.emotion });
-    pushToFeed({
-      fromName: npc.name, fromColor: npc.color,
-      toName: "criação", toColor: npc.color,
-      message: `criou: ${obj.description}`, response: "", ts: now, type: "creation",
-    });
-
-    setTimeout(() => npcReactToCreation(obj, npc), 6000);
-  } catch (err) {
-    logger.debug({ err, response }, "Erro ao parsear objeto criado pela IA");
   }
+
+  // If AI unavailable or returned no valid JSON → use personality-based offline creation
+  if (!description) {
+    const offline = getOfflineCreation(npc);
+    description = offline.desc;
+    color = offline.color;
+    logger.debug({ npc: npc.name }, "Objeto criado via criação offline (IA indisponível)");
+  }
+
+  const obj: WorldObject = {
+    id: `obj-${worldObjectIdCounter++}`,
+    creator: npc.name, creatorId: npc.id, creatorColor: npc.color,
+    type: "custom",
+    description,
+    position: { x: npc.position.x + (Math.random() - 0.5) * 20, z: npc.position.z + (Math.random() - 0.5) * 20 },
+    createdAt: now,
+    color,
+    scale: 0.7 + Math.random() * 0.8,
+  };
+  worldObjects.push(obj);
+  if (worldObjects.length > 250) worldObjects.shift();
+  npc.createdThings.push({ id: obj.id, type: obj.type, description: obj.description, createdAt: now });
+  npc.currentAction = `criou: ${obj.description.slice(0, 40)}`;
+  saveWorldObject(obj).catch(() => {});
+  saveNpcCreation(npc.id, obj.description, obj.type).catch(() => {});
+  broadcastAll({ type: "npc-created-object", object: obj, npcName: npc.name, npcId: npc.id, npcColor: npc.color, description: obj.description, emotion: npc.emotion });
+  pushToFeed({
+    fromName: npc.name, fromColor: npc.color,
+    toName: "criação", toColor: npc.color,
+    message: `criou: ${obj.description}`, response: "", ts: now, type: "creation",
+  });
+  logger.info({ npc: npc.name, desc: obj.description.slice(0, 60) }, "NPC criou objeto");
+  setTimeout(() => npcReactToCreation(obj, npc), 6000);
 }
 
 // ─── Collective Intelligence: NPCs react to what others built ──────────────────
