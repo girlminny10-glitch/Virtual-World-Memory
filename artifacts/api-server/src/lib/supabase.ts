@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import WebSocket from "ws";
 import { logger } from "./logger";
 
 let rawSupabaseUrl = process.env.SUPABASE_URL?.trim() ?? "";
@@ -30,7 +31,9 @@ if (!supabaseReady) {
 }
 
 export const supabase = supabaseReady
-  ? createClient(supabaseUrl, supabaseKey!)
+  ? createClient(supabaseUrl, supabaseKey!, {
+      realtime: { transport: WebSocket },
+    })
   : null;
 
 export interface NpcMemoryRow {
