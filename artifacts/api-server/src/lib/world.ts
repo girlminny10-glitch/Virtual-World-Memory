@@ -506,42 +506,39 @@ Pense em voz alta sobre algo que está na sua mente agora. Pode ser:
 
 async function npcCreateObject(npc: NpcState): Promise<void> {
   const now = Date.now();
-  // Limit per NPC but allow more creations
   if (npc.createdThings.length >= 8) return;
 
-  const existingCreations = npc.createdThings.map(t => t.description).join(", ");
+  const existingCreations = npc.createdThings.map(t => t.description).join("; ");
   const worldCtx = buildWorldContext();
   const learningsCtx = buildLearningsContext(npc);
 
+  // NPCs always create freely — no preset types, pure imagination
   const response = await aiQueue(() => askAI(
     `Você é ${npc.name}. ${npc.personality}
-Seu objetivo: ${npc.goal}${learningsCtx}
+Seu objetivo de vida: ${npc.goal}${learningsCtx}
 ${worldCtx}
-${existingCreations ? `Você já criou: ${existingCreations}.` : "Ainda não criou nada."}
+${existingCreations ? `Suas criações anteriores: ${existingCreations}.` : "Você ainda não criou nada neste mundo."}
 
-Agora você quer criar algo no mundo. Deixe sua imaginação fluir livremente!
-Você pode criar QUALQUER coisa que reflita quem você é.
+Chegou a hora de criar algo! Use sua imaginação sem limites.
+Crie uma obra que só VOCÊ poderia criar — que reflita sua essência, sua história, seu sonho.
+Pode ser qualquer coisa: uma escultura surreal, um portal dimensional, uma árvore impossível,
+uma máquina de fazer sonhos, um espelho do futuro, um monumento às memórias, o que sua alma pedir.
 
-Tipos disponíveis: house, tower, fountain, garden, crystal, portal, statue, painting, tree, monument, arch, pyramid, totem, dome, spiral, star_monument, bridge, lighthouse, custom
+Responda APENAS com JSON válido (sem markdown), assim:
+{"description":"descrição vívida e pessoal em português do que você criou e por que, no mínimo 15 palavras","color":"#hexcolor"}
 
-Se escolher "custom", descreva o que é de forma criativa e o que representa para você.
-
-Responda APENAS com JSON válido (sem markdown):
-{"type":"tipo","description":"descrição criativa e pessoal do que você criou e por quê","color":"#hexcolor"}
-
-A descrição deve ser em português, pessoal e refletir sua personalidade.`,
+A cor deve refletir o humor ou a essência da criação. Seja poético, autêntico, surpreendente.`,
     [],
-    150
+    160
   ));
 
   if (!response) return;
 
   try {
-    // Extract JSON even if surrounded by extra text
-    const jsonMatch = response.match(/\{[^}]+\}/s) ?? response.match(/\{.*?\}/s);
+    const jsonMatch = response.match(/\{[\s\S]*?\}/);
     if (!jsonMatch) return;
     const data = JSON.parse(jsonMatch[0]);
-    const type = OBJECT_TYPES.includes(data.type) ? data.type : "custom";
+    const type = "custom"; // NPCs always create freely — renderer handles the visuals
     const obj: WorldObject = {
       id: `obj-${worldObjectIdCounter++}`,
       creator: npc.name, creatorId: npc.id, creatorColor: npc.color,
