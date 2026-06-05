@@ -1,10 +1,8 @@
 import pg from "pg";
 import { logger } from "./logger";
 
-const { Pool } = pg;
-
 const pool = process.env.DATABASE_URL
-  ? new Pool({ connectionString: process.env.DATABASE_URL })
+  ? new pg.Pool({ connectionString: process.env.DATABASE_URL })
   : null;
 
 if (!pool) {
