@@ -93,21 +93,25 @@ export function createWebSocketServer(server: import("http").Server): WebSocketS
 
       if (data.type === "player-create") {
         const pos = data.position as { x: number; z: number };
+        const playerName = players[playerId]?.name ?? "Jogador";
+        const playerColor = String(data.color ?? "#4ECDC4");
+        const objType = String(data.objType);
+        const customDesc = data.description ? String(data.description) : null;
         const obj = {
           id: `obj-${Date.now()}`,
-          creator: players[playerId]?.name ?? "Jogador",
+          creator: playerName,
           creatorId: playerId,
-          creatorColor: "#4ECDC4",
-          type: String(data.objType),
-          description: `${players[playerId]?.name ?? "Jogador"} criou um(a) ${data.objType}`,
+          creatorColor: playerColor,
+          type: objType,
+          description: customDesc ?? `${playerName} criou um(a) ${objType}`,
           position: pos,
           createdAt: Date.now(),
-          color: String(data.color ?? "#4ECDC4"),
+          color: playerColor,
           scale: Number(data.scale ?? 1),
         };
         worldObjects.push(obj);
-        if (worldObjects.length > 200) worldObjects.shift();
-        broadcast({ type: "npc-created-object", object: obj, npcName: obj.creator, npcId: playerId, npcColor: "#4ECDC4", description: obj.description, emotion: "feliz 😊" });
+        if (worldObjects.length > 250) worldObjects.shift();
+        broadcast({ type: "npc-created-object", object: obj, npcName: obj.creator, npcId: playerId, npcColor: playerColor, description: obj.description, emotion: "feliz 😊" });
       }
 
       if (data.type === "canvas-drawing") {

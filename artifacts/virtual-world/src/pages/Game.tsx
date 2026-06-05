@@ -11,7 +11,7 @@ type NpcState = {
 };
 type WorldObject = { id: string; type: string; position: Pos; creator: string; creatorColor: string; description: string; color?: string; scale?: number };
 type Msg = { id: string; who: string; text: string; color: string; mine?: boolean; typing?: boolean };
-type ConvFeed = { fromName: string; fromColor: string; toName: string; toColor: string; message: string; response: string; ts: number };
+type ConvFeed = { fromName: string; fromColor: string; toName: string; toColor: string; message: string; response: string; ts: number; type?: string };
 type DrawCmd = { type: "line" | "circle" | "rect" | "clear"; x?: number; y?: number; x2?: number; y2?: number; color?: string; size?: number };
 type WeatherType = "sunny" | "rain" | "storm" | "party" | "foggy" | "night" | "dawn";
 
@@ -20,13 +20,14 @@ const WORLD_SIZE = 300;
 const DRAW_TTL = 30 * 60 * 1000;
 
 // ─── Build categories ─────────────────────────────────────────────────────────
-const BUILD_CATEGORIES: Record<string, { types: string[]; emoji: string }> = {
+const BUILD_CATEGORIES: Record<string, { types: string[]; emoji: string; free?: boolean }> = {
   "Estruturas": { emoji: "🏠", types: ["house","cabin","tower","lighthouse","dome","arch","pyramid","obelisk","bridge"] },
   "Natureza":   { emoji: "🌿", types: ["tree","flower_bed","garden","rock","mushroom","fountain","well"] },
   "Arte":       { emoji: "🎨", types: ["crystal","portal","spiral","star_monument","monument","painting","totem","cube_art","sphere_art"] },
   "Mobília":    { emoji: "🪑", types: ["bench","table","chair","lamp_post","fence","gate","swing"] },
   "Veículos":   { emoji: "🚗", types: ["car","boat"] },
-  "Especial":   { emoji: "✨", types: ["statue","pyramid","lighthouse","obelisk"] },
+  "Especial":   { emoji: "⭐", types: ["statue","pyramid","lighthouse","obelisk"] },
+  "✨ Livre":   { emoji: "✨", types: ["custom"], free: true },
 };
 
 const OBJ_EMOJI: Record<string, string> = {
@@ -58,6 +59,20 @@ function makeBubble(text: string, color: string, emote = "💬"): THREE.Sprite {
   const tex = new THREE.CanvasTexture(cv); tex.minFilter = THREE.LinearFilter;
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
   sp.scale.set(7.5, 1.65, 1); return sp;
+}
+
+function makeNameTag(name: string, color: string): THREE.Sprite {
+  const cv = document.createElement("canvas"); cv.width = 256; cv.height = 48;
+  const ctx = cv.getContext("2d")!;
+  ctx.fillStyle = "rgba(4,4,20,0.82)";
+  ctx.beginPath(); ctx.roundRect(0, 0, 256, 48, 10); ctx.fill();
+  ctx.strokeStyle = color; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.roundRect(1, 1, 254, 46, 10); ctx.stroke();
+  ctx.font = "bold 22px system-ui,sans-serif"; ctx.fillStyle = color; ctx.textAlign = "center";
+  ctx.fillText(name, 128, 32);
+  const tex = new THREE.CanvasTexture(cv); tex.minFilter = THREE.LinearFilter;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+  sp.scale.set(3.6, 0.68, 1); return sp;
 }
 
 function buildChar(colorHex: string | number, gender: "female" | "male", isSelf = false): THREE.Group {
@@ -211,6 +226,28 @@ function spawnObj(obj: WorldObject, scene: THREE.Scene, ref: Record<string, THRE
   } else if (t==="painting") {
     add(new THREE.Mesh(new THREE.BoxGeometry(3*sc,2.5*sc,.1*sc),m(0x222222)), 2.5*sc);
     add(new THREE.Mesh(new THREE.PlaneGeometry(2.6*sc,2.1*sc),new THREE.MeshBasicMaterial({color:col,side:THREE.DoubleSide})), 2.5*sc,0,.06*sc);
+  } else if (t==="custom") {
+    // Creative freeform object — deterministic from description hash
+    const desc = obj.description ?? "";
+    let seed = 0; for (let i=0;i<desc.length;i++) seed=(seed*31+desc.charCodeAt(i))>>>0;
+    const rng=(n:number)=>{ seed=(seed*1664525+1013904223)>>>0; return (seed>>>0)/0xFFFFFFFF*n; };
+    const shapes = Math.floor(rng(4))+2;
+    const palette=[col,new THREE.Color().setHSL(rng(1),.8,.5),new THREE.Color().setHSL(rng(1),.7,.6),new THREE.Color(0xffffff)];
+    for(let i=0;i<shapes;i++){
+      const pick=Math.floor(rng(6));
+      const c2=palette[Math.floor(rng(palette.length))];
+      const h=rng(3)+0.5, ox=(rng(3)-1.5)*sc, oz=(rng(3)-1.5)*sc;
+      let mesh:THREE.Mesh;
+      if(pick===0) mesh=new THREE.Mesh(new THREE.BoxGeometry((rng(1.5)+0.5)*sc,h*sc,(rng(1.5)+0.5)*sc),m(c2));
+      else if(pick===1) mesh=new THREE.Mesh(new THREE.SphereGeometry((rng(.8)+.3)*sc,10,10),new THREE.MeshLambertMaterial({color:c2,transparent:true,opacity:0.85}));
+      else if(pick===2) mesh=new THREE.Mesh(new THREE.ConeGeometry((rng(.8)+.4)*sc,h*sc,8),m(c2));
+      else if(pick===3) mesh=new THREE.Mesh(new THREE.CylinderGeometry((rng(.5)+.2)*sc,(rng(.5)+.3)*sc,h*sc,8),m(c2));
+      else if(pick===4) mesh=new THREE.Mesh(new THREE.OctahedronGeometry((rng(.6)+.3)*sc),new THREE.MeshLambertMaterial({color:c2,transparent:true,opacity:0.9}));
+      else mesh=new THREE.Mesh(new THREE.TorusGeometry((rng(.6)+.4)*sc,.15*sc,8,20),m(c2));
+      mesh.position.set(ox,h/2*sc+rng(i*.4)*sc,oz);
+      mesh.rotation.set(rng(Math.PI*.4),rng(Math.PI*2),rng(Math.PI*.4));
+      mesh.castShadow=true; grp.add(mesh);
+    }
   } else {
     add(new THREE.Mesh(new THREE.BoxGeometry(2*sc,2.5*sc,2*sc),m(col)), 1.25*sc);
   }
@@ -289,6 +326,7 @@ export default function Game() {
   const [buildType,    setBuildType]   = useState("house");
   const [buildColor,   setBuildColor]  = useState("#4488ff");
   const [buildScale,   setBuildScale]  = useState(1.0);
+  const [freeDesc,     setFreeDesc]    = useState("");
 
   // New: weather/time
   const [weather,   setWeather]   = useState<WeatherType>("sunny");
@@ -377,16 +415,20 @@ export default function Game() {
       x: playerR.current.pos.x + (Math.random() - 0.5) * 12,
       z: playerR.current.pos.z + (Math.random() - 0.5) * 12,
     };
+    const isCustom = buildCat === "✨ Livre";
+    if (isCustom && !freeDesc.trim()) return;
     wsRef.current.send(JSON.stringify({
       type: "player-create",
-      objType: buildType,
+      objType: isCustom ? "custom" : buildType,
+      description: isCustom ? freeDesc.trim() : undefined,
       position: pos,
       color: buildColor,
       scale: buildScale,
     }));
-    toast(`Você colocou um ${buildType} ${OBJ_EMOJI[buildType] ?? "🏗️"}`, buildColor);
+    toast(`Você criou: ${isCustom ? freeDesc.trim().slice(0,30) : (OBJ_EMOJI[buildType] ?? "🏗️") + " " + buildType}`, buildColor);
+    if (isCustom) setFreeDesc("");
     setShowBuild(false);
-  }, [buildType, buildColor, buildScale, toast]);
+  }, [buildType, buildCat, buildColor, buildScale, freeDesc, toast]);
 
   // ─── WebSocket connection ───────────────────────────────────────────────────
   const connectWS = useCallback((scene: THREE.Scene, pn: string, pg: "female"|"male") => {
@@ -428,6 +470,9 @@ export default function Game() {
           if (npcsR.current[n.id]) return;
           const g=buildChar(n.color,n.gender??"female");
           g.position.set(n.position.x,0,n.position.z); scene.add(g);
+          // Name tag above head
+          const tag = makeNameTag(n.name, n.color);
+          tag.position.set(0, 3.5, 0); g.add(tag);
           npcsR.current[n.id]={group:g,state:{...n,targetPos:undefined}};
         });
         (d.worldObjects as WorldObject[]).forEach(o=>spawnObj(o,scene,objsR.current));
@@ -469,6 +514,14 @@ export default function Game() {
           sp.position.set(n.group.position.x,5,n.group.position.z);
           scene.add(sp); n.bubble=sp; n.bTimer=performance.now()+7000;
         }
+        // Also show in chat panel
+        setMsgs(p=>[...p,{id:Date.now().toString(),who:d.npcName as string,text:(em+" "+(d.thought as string)),color:d.npcColor as string}].slice(-50));
+        setTimeout(()=>chatMsgsRef.current?.scrollTo(0,99999),50);
+        break;
+      }
+      case "feed-update": {
+        const entry = d.entry as ConvFeed;
+        setFeed(p=>[entry,...p].slice(0,30));
         break;
       }
       case "npc-created-object": {
@@ -994,17 +1047,23 @@ export default function Game() {
           {tab==="feed" && (
             <div style={{flex:1,overflowY:"auto",padding:"6px 8px",display:"flex",flexDirection:"column",gap:0}}>
               {feed.length===0&&<div style={{color:"#334",fontSize:11,textAlign:"center",marginTop:20}}>As IAs vão começar a conversar em breve...</div>}
-              {feed.map((c,i)=>(
-                <div key={i} style={{padding:"7px 6px",borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
-                  <div style={{fontSize:10,marginBottom:3}}>
-                    <span style={{color:c.fromColor,fontWeight:700}}>{c.fromName}</span>
-                    <span style={{color:"#333"}}> → </span>
-                    <span style={{color:c.toColor,fontWeight:700}}>{c.toName}</span>
+              {feed.map((c,i)=>{
+                const typeIcon = c.type==="thought"?"💭":c.type==="creation"?"✨":c.type==="reaction"?"👀":c.type==="greeting"?"👋":"💬";
+                return (
+                  <div key={i} style={{padding:"7px 6px",borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
+                    <div style={{fontSize:10,marginBottom:3,display:"flex",alignItems:"center",gap:4}}>
+                      <span style={{opacity:0.6}}>{typeIcon}</span>
+                      <span style={{color:c.fromColor,fontWeight:700}}>{c.fromName}</span>
+                      {c.toName!=="pensamento"&&c.toName!=="criação"&&<>
+                        <span style={{color:"#333"}}>→</span>
+                        <span style={{color:c.toColor,fontWeight:700}}>{c.toName}</span>
+                      </>}
+                    </div>
+                    <div style={{color:"#aab",fontSize:11,lineHeight:1.4}}>"{c.message}"</div>
+                    {c.response&&<div style={{color:"#556",fontSize:10,marginTop:2,fontStyle:"italic"}}>↩ "{c.response.slice(0,55)}{c.response.length>55?"…":""}"</div>}
                   </div>
-                  <div style={{color:"#aab",fontSize:11,lineHeight:1.4}}>"{c.message}"</div>
-                  {c.response&&<div style={{color:"#556",fontSize:10,marginTop:2,fontStyle:"italic"}}>↩ "{c.response.slice(0,55)}{c.response.length>55?"…":""}"</div>}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -1050,42 +1109,67 @@ export default function Game() {
             <div style={{display:"flex",flexWrap:"wrap",gap:4,padding:"8px 10px",borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
               {Object.entries(BUILD_CATEGORIES).map(([cat,{emoji}])=>(
                 <button key={cat} onClick={()=>{setBuildCat(cat);setBuildType(BUILD_CATEGORIES[cat].types[0]);}}
-                  style={{padding:"4px 8px",borderRadius:8,border:`1px solid ${buildCat===cat?"#88ffaa":"rgba(255,255,255,0.1)"}`,background:buildCat===cat?"rgba(136,255,170,0.15)":"transparent",color:buildCat===cat?"#88ffaa":"#445",cursor:"pointer",fontSize:11,fontWeight:buildCat===cat?700:400}}>
+                  style={{padding:"4px 8px",borderRadius:8,border:`1px solid ${buildCat===cat?(cat==="✨ Livre"?"#ffaa44":"#88ffaa"):"rgba(255,255,255,0.1)"}`,background:buildCat===cat?(cat==="✨ Livre"?"rgba(255,170,68,0.15)":"rgba(136,255,170,0.15)"):"transparent",color:buildCat===cat?(cat==="✨ Livre"?"#ffaa44":"#88ffaa"):"#445",cursor:"pointer",fontSize:11,fontWeight:buildCat===cat?700:400}}>
                   {emoji} {cat}
                 </button>
               ))}
             </div>
 
-            {/* Objects in category */}
-            <div style={{display:"flex",flexWrap:"wrap",gap:4,padding:"8px 10px",maxHeight:130,overflowY:"auto",borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
-              {BUILD_CATEGORIES[buildCat].types.map(type=>(
-                <button key={type} onClick={()=>setBuildType(type)}
-                  title={type.replace(/_/g," ")}
-                  style={{padding:"6px 8px",borderRadius:8,border:`1px solid ${buildType===type?"#88ffaa":"rgba(255,255,255,0.08)"}`,background:buildType===type?"rgba(136,255,170,0.18)":"rgba(255,255,255,0.04)",cursor:"pointer",fontSize:18,lineHeight:1}}>
-                  {OBJ_EMOJI[type]??"📦"}
+            {buildCat === "✨ Livre" ? (
+              /* Free creative mode */
+              <div style={{padding:"10px 12px"}}>
+                <div style={{color:"#ffaa44",fontSize:12,fontWeight:700,marginBottom:8}}>✨ Criação Livre</div>
+                <div style={{color:"#665",fontSize:10,marginBottom:8,lineHeight:1.5}}>Descreva o que você quer criar e o jogo gera uma forma única baseada na sua descrição.</div>
+                <textarea value={freeDesc} onChange={e=>setFreeDesc(e.target.value)}
+                  placeholder="Ex: uma torre cristalina que brilha no escuro, um portal mágico flutuante, uma estátua do futuro..."
+                  maxLength={120}
+                  style={{width:"100%",boxSizing:"border-box",height:72,background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,170,68,0.3)",borderRadius:8,padding:"7px 9px",color:"#eee",fontSize:11,outline:"none",resize:"none",fontFamily:"inherit"}}/>
+                <div style={{color:"#443",fontSize:9,textAlign:"right",marginBottom:8}}>{freeDesc.length}/120</div>
+                <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
+                  <label style={{color:"#665",fontSize:11,flexShrink:0}}>Cor base:</label>
+                  <input type="color" value={buildColor} onChange={e=>setBuildColor(e.target.value)}
+                    style={{width:36,height:28,padding:0,border:"none",borderRadius:6,cursor:"pointer",background:"transparent"}}/>
+                  <label style={{color:"#665",fontSize:11,flexShrink:0}}>Escala:</label>
+                  <input type="range" min={0.4} max={2.5} step={0.1} value={buildScale} onChange={e=>setBuildScale(+e.target.value)} style={{flex:1}}/>
+                  <span style={{color:"#665",fontSize:11}}>{buildScale.toFixed(1)}x</span>
+                </div>
+                <button onClick={placeObject} disabled={!freeDesc.trim()}
+                  style={{width:"100%",padding:"9px 0",borderRadius:10,border:"none",background:freeDesc.trim()?"linear-gradient(90deg,#aa5500,#ffaa44)":"rgba(255,255,255,0.08)",color:freeDesc.trim()?"#fff":"#443",cursor:freeDesc.trim()?"pointer":"default",fontSize:13,fontWeight:700}}>
+                  ✨ Criar no mundo
                 </button>
-              ))}
-            </div>
+              </div>
+            ) : (<>
+              {/* Objects in category */}
+              <div style={{display:"flex",flexWrap:"wrap",gap:4,padding:"8px 10px",maxHeight:130,overflowY:"auto",borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
+                {BUILD_CATEGORIES[buildCat].types.map(type=>(
+                  <button key={type} onClick={()=>setBuildType(type)}
+                    title={type.replace(/_/g," ")}
+                    style={{padding:"6px 8px",borderRadius:8,border:`1px solid ${buildType===type?"#88ffaa":"rgba(255,255,255,0.08)"}`,background:buildType===type?"rgba(136,255,170,0.18)":"rgba(255,255,255,0.04)",cursor:"pointer",fontSize:18,lineHeight:1}}>
+                    {OBJ_EMOJI[type]??"📦"}
+                  </button>
+                ))}
+              </div>
 
-            {/* Selected object + controls */}
-            <div style={{padding:"8px 12px"}}>
-              <div style={{color:"#88ffaa",fontSize:12,fontWeight:700,marginBottom:8}}>
-                {OBJ_EMOJI[buildType]??""} {buildType.replace(/_/g," ")}
+              {/* Selected object + controls */}
+              <div style={{padding:"8px 12px"}}>
+                <div style={{color:"#88ffaa",fontSize:12,fontWeight:700,marginBottom:8}}>
+                  {OBJ_EMOJI[buildType]??""} {buildType.replace(/_/g," ")}
+                </div>
+                <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
+                  <label style={{color:"#445",fontSize:11,flexShrink:0}}>Cor:</label>
+                  <input type="color" value={buildColor} onChange={e=>setBuildColor(e.target.value)}
+                    style={{width:36,height:28,padding:0,border:"none",borderRadius:6,cursor:"pointer",background:"transparent"}}/>
+                  <label style={{color:"#445",fontSize:11,flexShrink:0}}>Escala:</label>
+                  <input type="range" min={0.4} max={2.5} step={0.1} value={buildScale} onChange={e=>setBuildScale(+e.target.value)}
+                    style={{flex:1}}/>
+                  <span style={{color:"#556",fontSize:11,flexShrink:0}}>{buildScale.toFixed(1)}x</span>
+                </div>
+                <button onClick={placeObject}
+                  style={{width:"100%",padding:"9px 0",borderRadius:10,border:"none",background:"linear-gradient(90deg,#22aa55,#55dd88)",color:"#fff",cursor:"pointer",fontSize:13,fontWeight:700}}>
+                  📍 Colocar aqui
+                </button>
               </div>
-              <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
-                <label style={{color:"#445",fontSize:11,flexShrink:0}}>Cor:</label>
-                <input type="color" value={buildColor} onChange={e=>setBuildColor(e.target.value)}
-                  style={{width:36,height:28,padding:0,border:"none",borderRadius:6,cursor:"pointer",background:"transparent"}}/>
-                <label style={{color:"#445",fontSize:11,flexShrink:0}}>Escala:</label>
-                <input type="range" min={0.4} max={2.5} step={0.1} value={buildScale} onChange={e=>setBuildScale(+e.target.value)}
-                  style={{flex:1}}/>
-                <span style={{color:"#556",fontSize:11,flexShrink:0}}>{buildScale.toFixed(1)}x</span>
-              </div>
-              <button onClick={placeObject}
-                style={{width:"100%",padding:"9px 0",borderRadius:10,border:"none",background:"linear-gradient(90deg,#22aa55,#55dd88)",color:"#fff",cursor:"pointer",fontSize:13,fontWeight:700}}>
-                📍 Colocar aqui
-              </button>
-            </div>
+            </>)}
           </div>
         )}
 
