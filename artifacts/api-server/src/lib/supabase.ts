@@ -1,40 +1,17 @@
-import { createClient } from "@supabase/supabase-js";
-import WebSocket from "ws";
+import pg from "pg";
 import { logger } from "./logger";
 
-let rawSupabaseUrl = process.env.SUPABASE_URL?.trim() ?? "";
-const supabaseKey = process.env.SUPABASE_KEY?.trim();
+const { Pool } = pg;
 
-if (rawSupabaseUrl && !rawSupabaseUrl.startsWith("http")) {
-  rawSupabaseUrl = `https://${rawSupabaseUrl}.supabase.co`;
-}
-
-function isValidHttpUrl(s: string): boolean {
-  try {
-    const u = new URL(s);
-    return u.protocol === "http:" || u.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-const supabaseUrl = rawSupabaseUrl;
-const supabaseReady = !!(supabaseUrl && supabaseKey && isValidHttpUrl(supabaseUrl));
-
-if (!supabaseReady) {
-  logger.warn(
-    { supabaseUrl: supabaseUrl ? supabaseUrl.slice(0, 40) : "(unset)" },
-    "SUPABASE_URL/KEY inválido ou ausente — persistência desativada"
-  );
-} else {
-  logger.info({ supabaseUrl: supabaseUrl.slice(0, 40) }, "Supabase conectado ✅");
-}
-
-export const supabase = supabaseReady
-  ? createClient(supabaseUrl, supabaseKey!, {
-      realtime: { transport: WebSocket as any },
-    })
+const pool = process.env.DATABASE_URL
+  ? new Pool({ connectionString: process.env.DATABASE_URL })
   : null;
+
+if (!pool) {
+  logger.warn("DATABASE_URL não configurada — persistência desativada");
+} else {
+  logger.info("PostgreSQL conectado ✅");
+}
 
 export interface NpcMemoryRow {
   id: string;
@@ -45,15 +22,7 @@ export interface NpcMemoryRow {
 }
 
 export async function initSupabaseTables(): Promise<void> {
-  if (!supabase) return;
-  try {
-    const { error } = await supabase.rpc("init_npc_memory", {});
-    if (error && !error.message.includes("does not exist")) {
-      logger.warn({ error }, "init_npc_memory RPC — tabelas já existem ou não disponível");
-    }
-  } catch {
-    // ignore
-  }
+  // Tables are created at startup via drizzle/SQL — nothing to do here
 }
 
 // ─── NPC Memories ─────────────────────────────────────────────────────────────
@@ -63,17 +32,14 @@ export async function saveNpcMemory(
   role: "user" | "assistant",
   content: string
 ): Promise<void> {
-  if (!supabase) return;
+  if (!pool) return;
   try {
-    const { error } = await supabase.from("npc_memories").insert({
-      npc_id: npcId,
-      role,
-      content,
-      created_at: new Date().toISOString(),
-    });
-    if (error) logger.warn({ error, npcId }, "Falha ao salvar memória NPC");
+    await pool.query(
+      "INSERT INTO npc_memories (npc_id, role, content, created_at) VALUES ($1, $2, $3, NOW())",
+      [npcId, role, content]
+    );
   } catch (err) {
-    logger.warn({ err }, "Supabase saveNpcMemory error");
+    logger.warn({ err, npcId }, "Falha ao salvar memória NPC");
   }
 }
 
@@ -81,58 +47,46 @@ export async function loadNpcMemory(
   npcId: string,
   limit = 40
 ): Promise<Array<{ role: "user" | "assistant"; content: string }>> {
-  if (!supabase) return [];
+  if (!pool) return [];
   try {
-    const { data, error } = await supabase
-      .from("npc_memories")
-      .select("role, content")
-      .eq("npc_id", npcId)
-      .order("created_at", { ascending: false })
-      .limit(limit);
-    if (error) {
-      logger.warn({ error, npcId }, "Falha ao carregar memória NPC");
-      return [];
-    }
-    return ((data ?? []) as Array<{ role: "user" | "assistant"; content: string }>).reverse();
+    const res = await pool.query(
+      "SELECT role, content FROM npc_memories WHERE npc_id = $1 ORDER BY created_at DESC LIMIT $2",
+      [npcId, limit]
+    );
+    return (res.rows as Array<{ role: "user" | "assistant"; content: string }>).reverse();
   } catch (err) {
-    logger.warn({ err }, "Supabase loadNpcMemory error");
+    logger.warn({ err, npcId }, "Falha ao carregar memória NPC");
     return [];
   }
 }
 
 export async function getNpcMemoryRows(npcId: string): Promise<NpcMemoryRow[]> {
-  if (!supabase) return [];
+  if (!pool) return [];
   try {
-    const { data, error } = await supabase
-      .from("npc_memories")
-      .select("*")
-      .eq("npc_id", npcId)
-      .order("created_at", { ascending: false })
-      .limit(50);
-    if (error) return [];
-    return (data ?? []) as NpcMemoryRow[];
+    const res = await pool.query(
+      "SELECT id::text, npc_id, role, content, created_at::text FROM npc_memories WHERE npc_id = $1 ORDER BY created_at DESC LIMIT 50",
+      [npcId]
+    );
+    return res.rows as NpcMemoryRow[];
   } catch {
     return [];
   }
 }
 
 export async function getNpcStats(npcId: string): Promise<{ totalConversations: number; totalCreations: number }> {
-  if (!supabase) return { totalConversations: 0, totalCreations: 0 };
+  if (!pool) return { totalConversations: 0, totalCreations: 0 };
   try {
-    const { count: conversations } = await supabase
-      .from("npc_memories")
-      .select("*", { count: "exact", head: true })
-      .eq("npc_id", npcId)
-      .eq("role", "assistant");
-
-    const { count: creations } = await supabase
-      .from("npc_creations")
-      .select("*", { count: "exact", head: true })
-      .eq("npc_id", npcId);
-
+    const convRes = await pool.query(
+      "SELECT COUNT(*)::int AS count FROM npc_memories WHERE npc_id = $1 AND role = 'assistant'",
+      [npcId]
+    );
+    const creatRes = await pool.query(
+      "SELECT COUNT(*)::int AS count FROM npc_creations WHERE npc_id = $1",
+      [npcId]
+    );
     return {
-      totalConversations: conversations ?? 0,
-      totalCreations: creations ?? 0,
+      totalConversations: convRes.rows[0]?.count ?? 0,
+      totalCreations: creatRes.rows[0]?.count ?? 0,
     };
   } catch {
     return { totalConversations: 0, totalCreations: 0 };
@@ -140,14 +94,12 @@ export async function getNpcStats(npcId: string): Promise<{ totalConversations: 
 }
 
 export async function saveNpcCreation(npcId: string, description: string, type: string): Promise<void> {
-  if (!supabase) return;
+  if (!pool) return;
   try {
-    await supabase.from("npc_creations").insert({
-      npc_id: npcId,
-      description,
-      type,
-      created_at: new Date().toISOString(),
-    });
+    await pool.query(
+      "INSERT INTO npc_creations (npc_id, description, type, created_at) VALUES ($1, $2, $3, NOW())",
+      [npcId, description, type]
+    );
   } catch {
     // ignore
   }
@@ -156,11 +108,13 @@ export async function saveNpcCreation(npcId: string, description: string, type: 
 // ─── NPC Learnings (auto-aprendizado) ─────────────────────────────────────────
 
 export async function saveNpcLearning(npcId: string, learning: string): Promise<void> {
-  if (!supabase) return;
+  if (!pool) return;
   try {
-    await supabase.from("npc_learnings").upsert(
-      { npc_id: npcId, learning, created_at: new Date().toISOString() },
-      { onConflict: "npc_id,learning" }
+    await pool.query(
+      `INSERT INTO npc_learnings (npc_id, learning, created_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (npc_id, learning) DO UPDATE SET created_at = NOW()`,
+      [npcId, learning]
     );
   } catch {
     // ignore
@@ -168,16 +122,13 @@ export async function saveNpcLearning(npcId: string, learning: string): Promise<
 }
 
 export async function loadNpcLearnings(npcId: string, limit = 15): Promise<string[]> {
-  if (!supabase) return [];
+  if (!pool) return [];
   try {
-    const { data, error } = await supabase
-      .from("npc_learnings")
-      .select("learning")
-      .eq("npc_id", npcId)
-      .order("created_at", { ascending: false })
-      .limit(limit);
-    if (error) return [];
-    return (data ?? []).map((r: { learning: string }) => r.learning);
+    const res = await pool.query(
+      "SELECT learning FROM npc_learnings WHERE npc_id = $1 ORDER BY created_at DESC LIMIT $2",
+      [npcId, limit]
+    );
+    return res.rows.map((r: { learning: string }) => r.learning);
   } catch {
     return [];
   }
@@ -189,11 +140,13 @@ export async function saveNpcRelationships(
   npcId: string,
   relationships: Record<string, { bond: number; reason: string; lastInteraction: number }>
 ): Promise<void> {
-  if (!supabase) return;
+  if (!pool) return;
   try {
-    await supabase.from("npc_relationships").upsert(
-      { npc_id: npcId, data: JSON.stringify(relationships), updated_at: new Date().toISOString() },
-      { onConflict: "npc_id" }
+    await pool.query(
+      `INSERT INTO npc_relationships (npc_id, data, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (npc_id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+      [npcId, JSON.stringify(relationships)]
     );
   } catch {
     // ignore
@@ -203,15 +156,14 @@ export async function saveNpcRelationships(
 export async function loadNpcRelationships(
   npcId: string
 ): Promise<Record<string, { bond: number; reason: string; lastInteraction: number }>> {
-  if (!supabase) return {};
+  if (!pool) return {};
   try {
-    const { data, error } = await supabase
-      .from("npc_relationships")
-      .select("data")
-      .eq("npc_id", npcId)
-      .single();
-    if (error || !data) return {};
-    return JSON.parse(data.data ?? "{}");
+    const res = await pool.query(
+      "SELECT data FROM npc_relationships WHERE npc_id = $1",
+      [npcId]
+    );
+    if (!res.rows[0]) return {};
+    return JSON.parse(res.rows[0].data ?? "{}");
   } catch {
     return {};
   }
@@ -245,30 +197,38 @@ export async function saveWorldObject(obj: {
   scale?: number;
   createdAt: number;
 }): Promise<void> {
-  if (!supabase) return;
+  if (!pool) return;
   try {
-    await supabase.from("world_objects").upsert({
-      id: obj.id,
-      creator: obj.creator,
-      creator_id: obj.creatorId,
-      creator_color: obj.creatorColor,
-      type: obj.type,
-      description: obj.description,
-      position_x: obj.position.x,
-      position_z: obj.position.z,
-      color: obj.color ?? "#aaaaaa",
-      scale: obj.scale ?? 1,
-      created_at: new Date(obj.createdAt).toISOString(),
-    }, { onConflict: "id" });
+    await pool.query(
+      `INSERT INTO world_objects (id, creator, creator_id, creator_color, type, description, position_x, position_z, color, scale, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       ON CONFLICT (id) DO UPDATE SET
+         creator = EXCLUDED.creator,
+         creator_id = EXCLUDED.creator_id,
+         creator_color = EXCLUDED.creator_color,
+         type = EXCLUDED.type,
+         description = EXCLUDED.description,
+         position_x = EXCLUDED.position_x,
+         position_z = EXCLUDED.position_z,
+         color = EXCLUDED.color,
+         scale = EXCLUDED.scale,
+         created_at = EXCLUDED.created_at`,
+      [
+        obj.id, obj.creator, obj.creatorId, obj.creatorColor,
+        obj.type, obj.description, obj.position.x, obj.position.z,
+        obj.color ?? "#aaaaaa", obj.scale ?? 1,
+        new Date(obj.createdAt).toISOString(),
+      ]
+    );
   } catch (err) {
     logger.warn({ err }, "Falha ao salvar world object");
   }
 }
 
 export async function deleteWorldObject(id: string): Promise<void> {
-  if (!supabase) return;
+  if (!pool) return;
   try {
-    await supabase.from("world_objects").delete().eq("id", id);
+    await pool.query("DELETE FROM world_objects WHERE id = $1", [id]);
   } catch {
     // ignore
   }
@@ -286,15 +246,12 @@ export async function loadWorldObjects(): Promise<Array<{
   scale: number;
   createdAt: number;
 }>> {
-  if (!supabase) return [];
+  if (!pool) return [];
   try {
-    const { data, error } = await supabase
-      .from("world_objects")
-      .select("*")
-      .order("created_at", { ascending: true })
-      .limit(150);
-    if (error || !data) return [];
-    return data.map((r: WorldObjectRow) => ({
+    const res = await pool.query(
+      "SELECT * FROM world_objects ORDER BY created_at ASC LIMIT 150"
+    );
+    return res.rows.map((r: WorldObjectRow) => ({
       id: r.id,
       creator: r.creator,
       creatorId: r.creator_id,
@@ -319,16 +276,13 @@ export async function saveNpcPairConversation(
   history: Array<{ role: string; content: string; speakerName: string }>,
   topic: string
 ): Promise<void> {
-  if (!supabase) return;
+  if (!pool) return;
   try {
-    await supabase.from("npc_pair_conversations").upsert(
-      {
-        pair_key: pairKey,
-        history: JSON.stringify(history.slice(-20)),
-        topic,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "pair_key" }
+    await pool.query(
+      `INSERT INTO npc_pair_conversations (pair_key, history, topic, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (pair_key) DO UPDATE SET history = EXCLUDED.history, topic = EXCLUDED.topic, updated_at = NOW()`,
+      [pairKey, JSON.stringify(history.slice(-20)), topic]
     );
   } catch {
     // ignore
@@ -339,17 +293,16 @@ export async function loadNpcPairConversation(pairKey: string): Promise<{
   history: Array<{ role: string; content: string; speakerName: string }>;
   topic: string;
 } | null> {
-  if (!supabase) return null;
+  if (!pool) return null;
   try {
-    const { data, error } = await supabase
-      .from("npc_pair_conversations")
-      .select("history, topic")
-      .eq("pair_key", pairKey)
-      .single();
-    if (error || !data) return null;
+    const res = await pool.query(
+      "SELECT history, topic FROM npc_pair_conversations WHERE pair_key = $1",
+      [pairKey]
+    );
+    if (!res.rows[0]) return null;
     return {
-      history: JSON.parse(data.history ?? "[]"),
-      topic: data.topic ?? "",
+      history: JSON.parse(res.rows[0].history ?? "[]"),
+      topic: res.rows[0].topic ?? "",
     };
   } catch {
     return null;
